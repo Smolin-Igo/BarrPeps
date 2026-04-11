@@ -73,25 +73,19 @@ async function loadExcelData() {
             const worksheet = workbook.Sheets[sheetName];
             const data = XLSX.utils.sheet_to_json(worksheet);
             
-            switch(sheetName.toLowerCase()) {
-                case 'peptides':
-                    peptidesData = data;
-                    console.log(`Loaded ${peptidesData.length} peptides`);
-                    break;
-                case 'experiments':
-                    experimentsData = data;
-                    console.log(`Loaded ${experimentsData.length} experiments`);
-                    break;
-                case 'references':
-                    referencesData = data;
-                    console.log(`Loaded ${referencesData.length} references`);
-                    break;
-                case 'modifications':
-                    modificationsData = data;
-                    console.log(`Loaded ${modificationsData.length} modifications`);
-                    break;
-                default:
-                    console.log(`Unknown sheet: ${sheetName}`);
+            const sheetLower = sheetName.toLowerCase();
+            if (sheetLower === 'peptides') {
+                peptidesData = data;
+                console.log(`Loaded ${peptidesData.length} peptides`);
+            } else if (sheetLower === 'experiments') {
+                experimentsData = data;
+                console.log(`Loaded ${experimentsData.length} experiments`);
+            } else if (sheetLower === 'references') {
+                referencesData = data;
+                console.log(`Loaded ${referencesData.length} references`);
+            } else if (sheetLower === 'modifications') {
+                modificationsData = data;
+                console.log(`Loaded ${modificationsData.length} modifications`);
             }
         }
         
@@ -136,14 +130,17 @@ function formatSequenceWithModifications(sequence) {
 }
 
 function getModificationsForPeptide(peptideId) {
+    if (!modificationsData || modificationsData.length === 0) return [];
     return modificationsData.filter(m => m['peptide_id'] === peptideId);
 }
 
 function getReferencesForPeptide(peptideId) {
+    if (!referencesData || referencesData.length === 0) return [];
     return referencesData.filter(r => r['peptide_id'] === peptideId);
 }
 
 function getExperimentsForPeptide(peptideId) {
+    if (!experimentsData || experimentsData.length === 0) return [];
     return experimentsData.filter(e => e['peptide_id'] === peptideId);
 }
 
@@ -151,27 +148,46 @@ function processAllData() {
     // Build enhanced peptide objects with all related data
     const enhancedPeptides = [];
     
-    peptidesData.forEach((peptide, index) => {
-        const peptideId = peptide['peptide_id'] || index + 1;
+    for (let idx = 0; idx < peptidesData.length; idx++) {
+        const peptide = peptidesData[idx];
+        const peptideId = peptide['peptide_id'] || idx + 1;
         const modifications = getModificationsForPeptide(peptideId);
         const references = getReferencesForPeptide(peptideId);
         const experiments = getExperimentsForPeptide(peptideId);
         
         // Collect unique transport types from experiments
-        const transportTypes = [...new Set(experiments.map(e => e['transport_type']).filter(t => t))];
-        
-        // Collect BBB permeability values
-        const bbbValues = experiments.filter(e => e['response'] === 'Kin' || e['response'] === 'Pe').map(e => ({
-            value: e['result'],
-            unit: e['unit'],
-            method: e['method']
-        }));
+        const transportTypes = [];
+        const seenTypes = new Set();
+        for (let i = 0; i < experiments.length; i++) {
+            const t = experiments[i]['transport_type'];
+            if (t && !seenTypes.has(t)) {
+                seenTypes.add(t);
+                transportTypes.push(t);
+            }
+        }
         
         // Collect modification types
-        const modTypes = [...new Set(modifications.map(m => m['modifications']).filter(m => m))];
+        const modTypes = [];
+        const seenMods = new Set();
+        for (let i = 0; i < modifications.length; i++) {
+            const m = modifications[i]['modifications'];
+            if (m && !seenMods.has(m)) {
+                seenMods.add(m);
+                modTypes.push(m);
+            }
+        }
         
         // Find best reference
-        const primaryRef = references.find(r => r['source_ref_id'] && r['authors']) || references[0];
+        let primaryRef = null;
+        for (let i = 0; i < references.length; i++) {
+            if (references[i]['source_ref_id'] && references[i]['authors']) {
+                primaryRef = references[i];
+                break;
+            }
+        }
+        if (!primaryRef && references.length > 0) {
+            primaryRef = references[0];
+        }
         
         const enhancedPeptide = {
             id: peptideId,
@@ -194,7 +210,6 @@ function processAllData() {
             references: references,
             experiments: experiments,
             transport_types: transportTypes,
-            bbb_permeability_values: bbbValues,
             
             // Literature info
             authors: primaryRef ? primaryRef['authors'] : '',
@@ -208,7 +223,7 @@ function processAllData() {
         };
         
         enhancedPeptides.push(enhancedPeptide);
-    });
+    }
     
     peptidesData = enhancedPeptides;
     filteredPeptides = [...peptidesData];
@@ -238,8 +253,8 @@ function calculateAADistribution() {
     
     let totalAAs = 0;
     
-    peptidesData.forEach(peptide => {
-        const seq = peptide.sequence_one_letter || '';
+    for (let p = 0; p < peptidesData.length; p++) {
+        const seq = peptidesData[p].sequence_one_letter || '';
         for (let i = 0; i < seq.length; i++) {
             const aa = seq[i];
             if (aaCounts.hasOwnProperty(aa)) {
@@ -247,19 +262,29 @@ function calculateAADistribution() {
                 totalAAs++;
             }
         }
-    });
+    }
     
     const aaPercentages = {};
-    for (const [aa, count] of Object.entries(aaCounts)) {
-        aaPercentages[aa] = totalAAs > 0 ? (count / totalAAs * 100).toFixed(1) : 0;
+    for (const aa in aaCounts) {
+        aaPercentages[aa] = totalAAs > 0 ? (aaCounts[aa] / totalAAs * 100).toFixed(1) : 0;
     }
     
     return aaPercentages;
 }
 
 function calculateLengthDistribution() {
-    const lengths = peptidesData.map(p => p.length).filter(l => l > 0);
-    const maxLength = Math.max(...lengths);
+    const lengths = [];
+    for (let p = 0; p < peptidesData.length; p++) {
+        const l = peptidesData[p].length;
+        if (l > 0) lengths.push(l);
+    }
+    
+    if (lengths.length === 0) return {};
+    
+    let maxLength = lengths[0];
+    for (let i = 1; i < lengths.length; i++) {
+        if (lengths[i] > maxLength) maxLength = lengths[i];
+    }
     
     const binSize = 10;
     const bins = {};
@@ -271,20 +296,21 @@ function calculateLengthDistribution() {
         bins[binLabel] = 0;
     }
     
-    lengths.forEach(length => {
+    for (let i = 0; i < lengths.length; i++) {
+        const length = lengths[i];
         const binIndex = Math.floor(length / binSize);
         const binStart = binIndex * binSize;
         const binEnd = binStart + binSize;
         const binLabel = `${binStart}-${binEnd}`;
         bins[binLabel]++;
-    });
+    }
     
     const filteredBins = {};
     let hasData = false;
-    for (const [label, count] of Object.entries(bins)) {
-        if (count > 0) hasData = true;
-        if (hasData || count > 0) {
-            filteredBins[label] = count;
+    for (const label in bins) {
+        if (bins[label] > 0) hasData = true;
+        if (hasData || bins[label] > 0) {
+            filteredBins[label] = bins[label];
         }
     }
     
@@ -292,14 +318,19 @@ function calculateLengthDistribution() {
 }
 
 function calculateChargeDistribution() {
-    const charges = peptidesData.map(p => p.net_charge).filter(c => c !== null && c !== '');
-    const chargeCounts = {};
+    const charges = [];
+    for (let p = 0; p < peptidesData.length; p++) {
+        const c = peptidesData[p].net_charge;
+        if (c !== null && c !== '') charges.push(c);
+    }
     
-    charges.forEach(charge => {
+    const chargeCounts = {};
+    for (let i = 0; i < charges.length; i++) {
+        const charge = charges[i];
         const roundedCharge = Math.round(charge);
         const key = roundedCharge >= 0 ? `+${roundedCharge}` : `${roundedCharge}`;
         chargeCounts[key] = (chargeCounts[key] || 0) + 1;
-    });
+    }
     
     const sortedKeys = Object.keys(chargeCounts).sort((a, b) => {
         const numA = parseInt(a) || 0;
@@ -308,9 +339,10 @@ function calculateChargeDistribution() {
     });
     
     const sortedCounts = {};
-    sortedKeys.forEach(key => {
+    for (let i = 0; i < sortedKeys.length; i++) {
+        const key = sortedKeys[i];
         sortedCounts[key] = chargeCounts[key];
-    });
+    }
     
     return sortedCounts;
 }
@@ -363,12 +395,13 @@ function createChargeChart() {
     
     if (chargeChart) chargeChart.destroy();
     
-    const backgroundColors = labels.map(label => {
-        const val = parseInt(label);
-        if (val > 0) return 'rgba(66, 153, 225, 0.7)';
-        if (val < 0) return 'rgba(245, 101, 101, 0.7)';
-        return 'rgba(160, 174, 192, 0.7)';
-    });
+    const backgroundColors = [];
+    for (let i = 0; i < labels.length; i++) {
+        const val = parseInt(labels[i]);
+        if (val > 0) backgroundColors.push('rgba(66, 153, 225, 0.7)');
+        else if (val < 0) backgroundColors.push('rgba(245, 101, 101, 0.7)');
+        else backgroundColors.push('rgba(160, 174, 192, 0.7)');
+    }
     
     chargeChart = new Chart(ctx, {
         type: 'bar',
@@ -445,7 +478,7 @@ function initHomePage() {
     updateHomeStats();
     displayFeaturedPeptides();
     
-    setTimeout(() => {
+    setTimeout(function() {
         if (peptidesData.length > 0) {
             createLengthChart();
             createChargeChart();
@@ -458,8 +491,19 @@ function updateHomeStats() {
     const total = peptidesData.length;
     if (total === 0) return;
     
-    const avgLength = peptidesData.reduce((sum, p) => sum + p.length, 0) / total;
-    const avgCharge = peptidesData.reduce((sum, p) => sum + (parseFloat(p.net_charge) || 0), 0) / total;
+    let sumLength = 0;
+    let sumCharge = 0;
+    let chargeCount = 0;
+    for (let i = 0; i < peptidesData.length; i++) {
+        sumLength += peptidesData[i].length;
+        if (peptidesData[i].net_charge !== null) {
+            sumCharge += parseFloat(peptidesData[i].net_charge) || 0;
+            chargeCount++;
+        }
+    }
+    
+    const avgLength = sumLength / total;
+    const avgCharge = chargeCount > 0 ? sumCharge / chargeCount : 0;
     
     const totalEl = document.getElementById('totalPeptides');
     const avgLengthEl = document.getElementById('avgLength');
@@ -482,7 +526,8 @@ function displayFeaturedPeptides() {
     }
     
     let html = '';
-    featured.forEach(peptide => {
+    for (let i = 0; i < featured.length; i++) {
+        const peptide = featured[i];
         const peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
         
         html += `
@@ -506,7 +551,7 @@ function displayFeaturedPeptides() {
                 </div>
             </div>
         `;
-    });
+    }
     
     container.innerHTML = html;
 }
@@ -541,23 +586,31 @@ function updateBrowseStats() {
 
 function initAASelector() {
     const buttons = document.querySelectorAll('.aa-btn-compact');
-    buttons.forEach(btn => {
+    for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i];
         btn.addEventListener('click', function() {
             const aa = this.getAttribute('data-aa');
             if (this.classList.contains('selected')) {
                 this.classList.remove('selected');
-                selectedAAs = selectedAAs.filter(a => a !== aa);
+                const newSelected = [];
+                for (let j = 0; j < selectedAAs.length; j++) {
+                    if (selectedAAs[j] !== aa) newSelected.push(selectedAAs[j]);
+                }
+                selectedAAs = newSelected;
             } else {
                 this.classList.add('selected');
                 selectedAAs.push(aa);
             }
         });
-    });
+    }
 }
 
 function containsAllAAs(sequence, requiredAAs) {
     if (!requiredAAs || requiredAAs.length === 0) return true;
-    return requiredAAs.every(aa => sequence && sequence.includes(aa));
+    for (let i = 0; i < requiredAAs.length; i++) {
+        if (!sequence.includes(requiredAAs[i])) return false;
+    }
+    return true;
 }
 
 function checkModification(peptide, modType) {
@@ -567,46 +620,137 @@ function checkModification(peptide, modType) {
     const mods = peptide.modifications || [];
     
     switch(modType) {
-        case 'amidation': return notes.includes('amid') || name.includes('amid') || sequence.includes('nh2') || mods.some(m => m.toLowerCase().includes('amid'));
-        case 'acylation': return notes.includes('acyl') || name.includes('acyl') || mods.some(m => m.toLowerCase().includes('acyl'));
-        case 'cyclization': return notes.includes('cycl') || notes.includes('cyclic') || mods.some(m => m.toLowerCase().includes('cycl'));
-        case 'glycosylation': return notes.includes('glyco') || mods.some(m => m.toLowerCase().includes('glyco'));
-        case 'phosphorylation': return notes.includes('phospho') || mods.some(m => m.toLowerCase().includes('phospho'));
-        case 'methylated': return notes.includes('methyl') || sequence.includes('me') || sequence.includes('nme') || mods.some(m => m.toLowerCase().includes('methyl'));
-        case 'acetylated': return notes.includes('acetyl') || sequence.includes('ac') || mods.some(m => m.toLowerCase().includes('acetyl'));
-        default: return true;
+        case 'amidation': 
+            return notes.includes('amid') || name.includes('amid') || sequence.includes('nh2') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('amid')) return true;
+                }
+                return false;
+            })();
+        case 'acylation': 
+            return notes.includes('acyl') || name.includes('acyl') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('acyl')) return true;
+                }
+                return false;
+            })();
+        case 'cyclization': 
+            return notes.includes('cycl') || notes.includes('cyclic') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('cycl')) return true;
+                }
+                return false;
+            })();
+        case 'glycosylation': 
+            return notes.includes('glyco') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('glyco')) return true;
+                }
+                return false;
+            })();
+        case 'phosphorylation': 
+            return notes.includes('phospho') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('phospho')) return true;
+                }
+                return false;
+            })();
+        case 'methylated': 
+            return notes.includes('methyl') || sequence.includes('me') || sequence.includes('nme') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('methyl')) return true;
+                }
+                return false;
+            })();
+        case 'acetylated': 
+            return notes.includes('acetyl') || sequence.includes('ac') || (function() {
+                for (let i = 0; i < mods.length; i++) {
+                    if (mods[i].toLowerCase().includes('acetyl')) return true;
+                }
+                return false;
+            })();
+        default: 
+            return true;
     }
 }
 
 function applyAllFilters() {
-    const searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
-    const structureFilter = document.getElementById('structureFilter') ? document.getElementById('structureFilter').value : 'all';
-    const lengthMin = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
-    const lengthMax = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 100) || 1000;
-    const modFilter = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
+    const searchInput = document.getElementById('searchInput');
+    const structureFilter = document.getElementById('structureFilter');
+    const lengthMin = document.getElementById('lengthMin');
+    const lengthMax = document.getElementById('lengthMax');
+    const modFilter = document.getElementById('modFilter');
     
-    let tempFiltered = [...peptidesData];
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    const structureType = structureFilter ? structureFilter.value : 'all';
+    const minLen = (lengthMin ? parseInt(lengthMin.value) : 0) || 0;
+    const maxLen = (lengthMax ? parseInt(lengthMax.value) : 100) || 1000;
+    const modType = modFilter ? modFilter.value : 'all';
     
+    let tempFiltered = [];
+    for (let i = 0; i < peptidesData.length; i++) {
+        tempFiltered.push(peptidesData[i]);
+    }
+    
+    // Search filter
     if (searchTerm) {
-        tempFiltered = tempFiltered.filter(p => 
-            (p.peptide_name && p.peptide_name.toLowerCase().includes(searchTerm)) ||
-            (p.sequence_one_letter && p.sequence_one_letter.toLowerCase().includes(searchTerm)) ||
-            (p.source_organism && p.source_organism.toLowerCase().includes(searchTerm))
-        );
+        const newFiltered = [];
+        for (let i = 0; i < tempFiltered.length; i++) {
+            const p = tempFiltered[i];
+            const inName = p.peptide_name && p.peptide_name.toLowerCase().includes(searchTerm);
+            const inSeq = p.sequence_one_letter && p.sequence_one_letter.toLowerCase().includes(searchTerm);
+            const inSource = p.source_organism && p.source_organism.toLowerCase().includes(searchTerm);
+            if (inName || inSeq || inSource) {
+                newFiltered.push(p);
+            }
+        }
+        tempFiltered = newFiltered;
     }
     
-    tempFiltered = tempFiltered.filter(p => p.length >= lengthMin && p.length <= lengthMax);
+    // Length filter
+    const lengthFiltered = [];
+    for (let i = 0; i < tempFiltered.length; i++) {
+        const p = tempFiltered[i];
+        if (p.length >= minLen && p.length <= maxLen) {
+            lengthFiltered.push(p);
+        }
+    }
+    tempFiltered = lengthFiltered;
     
-    if (structureFilter !== 'all') {
-        tempFiltered = tempFiltered.filter(p => (p.structure_type || '').toLowerCase() === structureFilter.toLowerCase());
+    // Structure filter
+    if (structureType !== 'all') {
+        const structFiltered = [];
+        for (let i = 0; i < tempFiltered.length; i++) {
+            const p = tempFiltered[i];
+            if ((p.structure_type || '').toLowerCase() === structureType.toLowerCase()) {
+                structFiltered.push(p);
+            }
+        }
+        tempFiltered = structFiltered;
     }
     
+    // Amino acid filter
     if (selectedAAs.length > 0) {
-        tempFiltered = tempFiltered.filter(p => containsAllAAs(p.sequence_one_letter || '', selectedAAs));
+        const aaFiltered = [];
+        for (let i = 0; i < tempFiltered.length; i++) {
+            const p = tempFiltered[i];
+            if (containsAllAAs(p.sequence_one_letter || '', selectedAAs)) {
+                aaFiltered.push(p);
+            }
+        }
+        tempFiltered = aaFiltered;
     }
     
-    if (modFilter !== 'all') {
-        tempFiltered = tempFiltered.filter(p => checkModification(p, modFilter));
+    // Modification filter
+    if (modType !== 'all') {
+        const modFiltered = [];
+        for (let i = 0; i < tempFiltered.length; i++) {
+            const p = tempFiltered[i];
+            if (checkModification(p, modType)) {
+                modFiltered.push(p);
+            }
+        }
+        tempFiltered = modFiltered;
     }
     
     filteredPeptides = tempFiltered;
@@ -628,11 +772,15 @@ function resetAllFilters() {
     if (modFilter) modFilter.value = 'all';
     
     selectedAAs = [];
-    document.querySelectorAll('.aa-btn-compact').forEach(btn => {
-        btn.classList.remove('selected');
-    });
+    const btns = document.querySelectorAll('.aa-btn-compact');
+    for (let i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('selected');
+    }
     
-    filteredPeptides = [...peptidesData];
+    filteredPeptides = [];
+    for (let i = 0; i < peptidesData.length; i++) {
+        filteredPeptides.push(peptidesData[i]);
+    }
     updateBrowseStats();
     displayBrowseResults();
 }
@@ -643,29 +791,38 @@ function downloadResults() {
         return;
     }
     
-    const headers = ['ID', 'Peptide Name', 'Sequence', 'Length', 'MW (Da)', 'Molecular Formula', 'Structure Type', 'Source Organism', 'Disulfide Bridges', 'Modifications', 'References', 'Transport Types', 'Authors', 'Year', 'Journal'];
+    const headers = ['ID', 'Peptide Name', 'Sequence', 'Length', 'MW (Da)', 'Molecular Formula', 'Structure Type', 'Source Organism', 'Disulfide Bridges', 'Modifications', 'Transport Types'];
     
-    const rows = filteredPeptides.map(p => [
-        p.id || '',
-        p.peptide_name || '',
-        p.sequence_one_letter || '',
-        p.length || '',
-        p.molecular_weight || '',
-        p.molecular_formula || '',
-        p.structure_type || '',
-        p.source_organism || '',
-        p.disulfide_bridge || '',
-        (p.modifications || []).join('; '),
-        p.references ? p.references.length : 0,
-        (p.transport_types || []).join('; '),
-        p.authors || '',
-        p.year || '',
-        p.journal || ''
-    ]);
+    const rows = [];
+    for (let i = 0; i < filteredPeptides.length; i++) {
+        const p = filteredPeptides[i];
+        rows.push([
+            p.id || '',
+            p.peptide_name || '',
+            p.sequence_one_letter || '',
+            p.length || '',
+            p.molecular_weight || '',
+            p.molecular_formula || '',
+            p.structure_type || '',
+            p.source_organism || '',
+            p.disulfide_bridge || '',
+            (p.modifications || []).join('; '),
+            (p.transport_types || []).join('; ')
+        ]);
+    }
     
-    const csvContent = [headers, ...rows].map(row => 
-        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
+    let csvContent = '';
+    for (let i = 0; i < headers.length; i++) {
+        csvContent += (i > 0 ? ',' : '') + `"${headers[i]}"`;
+    }
+    csvContent += '\n';
+    
+    for (let i = 0; i < rows.length; i++) {
+        for (let j = 0; j < rows[i].length; j++) {
+            csvContent += (j > 0 ? ',' : '') + `"${String(rows[i][j]).replace(/"/g, '""')}"`;
+        }
+        csvContent += '\n';
+    }
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -709,22 +866,20 @@ function displayTableView(container) {
                         <th onclick="sortBy('molecular_weight')">MW (Da)</th>
                         <th onclick="sortBy('structure_type')">Structure</th>
                         <th onclick="sortBy('source_organism')">Source</th>
-                        <th>Modifications</th>
                         <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
     `;
     
-    filteredPeptides.forEach(peptide => {
+    for (let i = 0; i < filteredPeptides.length; i++) {
+        const peptide = filteredPeptides[i];
         const sequenceDisplay = peptide.sequence_one_letter ? 
             (peptide.sequence_one_letter.length > 30 ? 
                 peptide.sequence_one_letter.substring(0, 30) + '...' : 
                 peptide.sequence_one_letter) : 'N/A';
         
         const peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
-        const modsDisplay = peptide.modifications && peptide.modifications.length > 0 ? 
-            peptide.modifications.slice(0, 2).join(', ') + (peptide.modifications.length > 2 ? '...' : '') : '—';
         
         html += `
             <tr>
@@ -732,17 +887,16 @@ function displayTableView(container) {
                     <a href="${peptideUrl}" style="text-decoration: none; color: #2c5282; font-weight: bold;">
                         ${peptide.peptide_name || 'N/A'}
                     </a>
-                  </td>
+                   </td>
                 <td style="font-family: monospace; font-size: 0.65rem;">${sequenceDisplay}</td>
                 <td>${peptide.length || 'N/A'}</td>
                 <td>${peptide.molecular_weight ? peptide.molecular_weight.toFixed(1) : 'N/A'}</td>
                 <td>${peptide.structure_type || 'N/A'}</td>
                 <td>${peptide.source_organism || 'N/A'}</td>
-                <td><span style="font-size: 0.65rem;">${modsDisplay}</span></td>
                 <td><a href="${peptideUrl}" class="btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.65rem; text-decoration: none;">View</a></td>
             </tr>
         `;
-    });
+    }
     
     html += `</tbody></table></div>`;
     container.innerHTML = html;
@@ -751,10 +905,9 @@ function displayTableView(container) {
 function displayCardBrowseView(container) {
     let html = '<div class="peptide-grid">';
     
-    filteredPeptides.forEach(peptide => {
+    for (let i = 0; i < filteredPeptides.length; i++) {
+        const peptide = filteredPeptides[i];
         const peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
-        const modsDisplay = peptide.modifications && peptide.modifications.length > 0 ? 
-            peptide.modifications.slice(0, 3).join(', ') : '—';
         
         html += `
             <div class="peptide-card" onclick="window.location.href='${peptideUrl}'" style="cursor: pointer;">
@@ -775,17 +928,13 @@ function displayCardBrowseView(container) {
                         <div class="card-value">${peptide.structure_type || 'N/A'}</div>
                     </div>
                     <div class="card-row">
-                        <div class="card-label">Modifications:</div>
-                        <div class="card-value" style="font-size: 0.7rem;">${modsDisplay}</div>
-                    </div>
-                    <div class="card-row">
                         <div class="card-label">Sequence:</div>
                         <div class="card-value" style="font-family: monospace; font-size: 0.65rem; word-break: break-all;">${peptide.sequence_one_letter || 'N/A'}</div>
                     </div>
                 </div>
             </div>
         `;
-    });
+    }
     
     html += '</div>';
     container.innerHTML = html;
@@ -794,7 +943,9 @@ function displayCardBrowseView(container) {
 function setView(view) {
     currentView = view;
     const btns = document.querySelectorAll('.toggle-btn');
-    btns.forEach(btn => btn.classList.remove('active'));
+    for (let i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('active');
+    }
     if (view === 'table') {
         if (btns[0]) btns[0].classList.add('active');
     } else {
@@ -811,7 +962,7 @@ function sortBy(column) {
         sortDirection = 'asc';
     }
     
-    filteredPeptides.sort((a, b) => {
+    filteredPeptides.sort(function(a, b) {
         let valA = a[column];
         let valB = b[column];
         
@@ -833,12 +984,19 @@ function sortBy(column) {
 
 // ========== PEPTIDE DETAIL PAGE ==========
 
-async function initPeptidePage() {
+function initPeptidePage() {
     console.log('Initializing peptide page');
     
     const urlParams = new URLSearchParams(window.location.search);
     const peptideId = parseInt(urlParams.get('id'));
-    const peptide = peptidesData.find(p => p.id === peptideId);
+    
+    let peptide = null;
+    for (let i = 0; i < peptidesData.length; i++) {
+        if (peptidesData[i].id === peptideId) {
+            peptide = peptidesData[i];
+            break;
+        }
+    }
     
     if (!peptide) {
         const detailContainer = document.getElementById('peptideDetail');
@@ -861,19 +1019,24 @@ async function initPeptidePage() {
 function formatReferenceList(references) {
     if (!references || references.length === 0) return 'N/A';
     
-    return references.map(ref => {
+    let result = '';
+    for (let i = 0; i < references.length; i++) {
+        const ref = references[i];
         const authors = ref['authors'] || '';
         const year = ref['year'] || '';
         const journal = ref['journal'] || '';
         const title = ref['title'] || '';
         
         if (authors && year && journal) {
-            return `${authors} (${year}). ${title}. ${journal}.`;
+            result += `${authors} (${year}). ${title}. ${journal}.`;
         } else if (authors && year) {
-            return `${authors} (${year}). ${title || ''}`;
+            result += `${authors} (${year}). ${title || ''}`;
+        } else {
+            result += title || 'Reference';
         }
-        return title || 'Reference';
-    }).join('<br><br>');
+        if (i < references.length - 1) result += '<br><br>';
+    }
+    return result;
 }
 
 function formatExperiments(experiments) {
@@ -882,33 +1045,47 @@ function formatExperiments(experiments) {
     const uniqueExperiments = [];
     const seen = new Set();
     
-    experiments.forEach(exp => {
+    for (let i = 0; i < experiments.length; i++) {
+        const exp = experiments[i];
         const key = `${exp['method']}_${exp['response']}_${exp['result']}`;
         if (!seen.has(key)) {
             seen.add(key);
             uniqueExperiments.push(exp);
         }
-    });
+    }
     
-    return uniqueExperiments.slice(0, 10).map(exp => {
+    let result = '';
+    const limit = Math.min(uniqueExperiments.length, 10);
+    for (let i = 0; i < limit; i++) {
+        const exp = uniqueExperiments[i];
         const method = exp['method'] || 'N/A';
         const response = exp['response'] || 'N/A';
-        const result = exp['result'] || 'N/A';
+        const resultVal = exp['result'] || 'N/A';
         const unit = exp['unit'] || '';
         const transportType = exp['transport_type'] || '';
         
-        let text = `<strong>${method}</strong>: ${response} = ${result} ${unit}`;
+        let text = `<strong>${method}</strong>: ${response} = ${resultVal} ${unit}`;
         if (transportType) text += ` (${transportType})`;
-        return text;
-    }).join('<br>');
+        result += text;
+        if (i < limit - 1) result += '<br>';
+    }
+    return result;
 }
 
 function displayPeptideDetail(peptide) {
     const formattedSequence = formatSequenceWithModifications(peptide.sequence_one_letter);
     const refsHtml = formatReferenceList(peptide.references);
     const experimentsHtml = formatExperiments(peptide.experiments);
-    const modsHtml = peptide.modifications && peptide.modifications.length > 0 ? 
-        peptide.modifications.map(m => `<span class="modification">${m}</span>`).join(', ') : 'N/A';
+    
+    let modsHtml = 'N/A';
+    if (peptide.modifications && peptide.modifications.length > 0) {
+        let mods = '';
+        for (let i = 0; i < peptide.modifications.length; i++) {
+            mods += `<span class="modification">${peptide.modifications[i]}</span>`;
+            if (i < peptide.modifications.length - 1) mods += ', ';
+        }
+        modsHtml = mods;
+    }
     
     const html = `
         <div class="peptide-detail-container">
