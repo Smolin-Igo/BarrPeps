@@ -21,100 +21,122 @@ let aaChart = null;
 
 // Helper functions
 function getPeptideUrl(peptideId, peptideName) {
-    return `peptide.html?id=${peptideId}&name=${encodeURIComponent(peptideName)}`;
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return 'peptide.html?id=' + peptideId + '&name=' + encodeURIComponent(peptideName);
 }
 
 function showUnderConstruction() {
-    const modal = document.getElementById('underConstructionModal');
+    var modal = document.getElementById('underConstructionModal');
     if (modal) {
         modal.style.display = 'flex';
     }
 }
 
 function closeModal() {
-    const modal = document.getElementById('underConstructionModal');
+    var modal = document.getElementById('underConstructionModal');
     if (modal) {
         modal.style.display = 'none';
     }
 }
 
 window.onclick = function(event) {
-    const modal = document.getElementById('underConstructionModal');
+    var modal = document.getElementById('underConstructionModal');
     if (event.target === modal) {
         closeModal();
     }
 }
 
 // ========== EXCEL FILE LOADER - ALL SHEETS ==========
-async function loadExcelData() {
+function loadExcelData() {
     // Check if XLSX library is loaded
     if (typeof XLSX === 'undefined') {
-        console.log('Waiting for SheetJS library to load...');
-        // Wait a bit and try again
-        setTimeout(loadExcelData, 500);
+        console.log('XLSX not loaded yet, waiting...');
+        // Try to load with alternative method
+        loadAlternative();
         return;
     }
     
-    try {
-        console.log('Loading Excel file: database.xlsx');
-        
-        const response = await fetch('database.xlsx');
-        if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
-        }
-        
-        const arrayBuffer = await response.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        
-        // Load all sheets
-        const sheets = workbook.SheetNames;
-        console.log('Sheets found:', sheets);
-        
-        for (let s = 0; s < sheets.length; s++) {
-            const sheetName = sheets[s];
-            const worksheet = workbook.Sheets[sheetName];
-            const data = XLSX.utils.sheet_to_json(worksheet);
+    console.log('XLSX loaded, starting Excel load...');
+    
+    fetch('database.xlsx')
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('HTTP error! status: ' + response.status);
+            }
+            return response.arrayBuffer();
+        })
+        .then(function(arrayBuffer) {
+            var workbook = XLSX.read(arrayBuffer, { type: 'array' });
             
-            const sheetLower = sheetName.toLowerCase();
-            if (sheetLower === 'peptides') {
-                peptidesData = data;
-                console.log('Loaded ' + peptidesData.length + ' peptides');
-            } else if (sheetLower === 'experiments') {
-                experimentsData = data;
-                console.log('Loaded ' + experimentsData.length + ' experiments');
-            } else if (sheetLower === 'references') {
-                referencesData = data;
-                console.log('Loaded ' + referencesData.length + ' references');
-            } else if (sheetLower === 'modifications') {
-                modificationsData = data;
-                console.log('Loaded ' + modificationsData.length + ' modifications');
+            var sheets = workbook.SheetNames;
+            console.log('Sheets found:', sheets);
+            
+            for (var s = 0; s < sheets.length; s++) {
+                var sheetName = sheets[s];
+                var worksheet = workbook.Sheets[sheetName];
+                var data = XLSX.utils.sheet_to_json(worksheet);
+                
+                var sheetLower = sheetName.toLowerCase();
+                if (sheetLower === 'peptides') {
+                    peptidesData = data;
+                    console.log('Loaded ' + peptidesData.length + ' peptides');
+                } else if (sheetLower === 'experiments') {
+                    experimentsData = data;
+                    console.log('Loaded ' + experimentsData.length + ' experiments');
+                } else if (sheetLower === 'references') {
+                    referencesData = data;
+                    console.log('Loaded ' + referencesData.length + ' references');
+                } else if (sheetLower === 'modifications') {
+                    modificationsData = data;
+                    console.log('Loaded ' + modificationsData.length + ' modifications');
+                }
             }
-        }
-        
-        // Process and merge data
-        processAllData();
-        
-    } catch (error) {
-        console.error('Error loading Excel:', error);
-        var errorHtml = '<div class="error-message">' +
-            '<p>Error loading database.xlsx: ' + error.message + '</p>' +
-            '<p>Please ensure database.xlsx is in the same directory.</p>' +
-            '<button onclick="location.reload()" class="btn-primary" style="margin-top: 1rem;">Retry</button>' +
-            '</div>';
-        
-        var containers = ['featuredPeptides', 'resultsContainer', 'peptideDetail'];
-        for (var c = 0; c < containers.length; c++) {
-            var container = document.getElementById(containers[c]);
-            if (container && container.innerHTML && container.innerHTML.indexOf('Loading') !== -1) {
-                container.innerHTML = errorHtml;
+            
+            processAllData();
+        })
+        .catch(function(error) {
+            console.error('Error loading Excel:', error);
+            showError('Error loading database.xlsx: ' + error.message);
+        });
+}
+
+function loadAlternative() {
+    // Alternative: try to load from a JSON file if available
+    console.log('Trying alternative data source...');
+    
+    fetch('peptides_data.json')
+        .then(function(response) {
+            if (response.ok) {
+                return response.json();
             }
+            throw new Error('No JSON fallback');
+        })
+        .then(function(data) {
+            console.log('Loaded JSON fallback with ' + data.length + ' entries');
+            // Create simple structure from JSON
+            peptidesData = data;
+            experimentsData = [];
+            referencesData = [];
+            modificationsData = [];
+            processAllData();
+        })
+        .catch(function(error) {
+            console.error('No fallback data available');
+            showError('Could not load data. Please check your internet connection and refresh the page.');
+        });
+}
+
+function showError(message) {
+    var errorHtml = '<div class="error-message">' +
+        '<p>' + message + '</p>' +
+        '<p>Please ensure database.xlsx is in the same directory and you have internet connection.</p>' +
+        '<button onclick="location.reload()" class="btn-primary" style="margin-top: 1rem;">Retry</button>' +
+        '</div>';
+    
+    var containers = ['featuredPeptides', 'resultsContainer', 'peptideDetail'];
+    for (var c = 0; c < containers.length; c++) {
+        var container = document.getElementById(containers[c]);
+        if (container && container.innerHTML && container.innerHTML.indexOf('Loading') !== -1) {
+            container.innerHTML = errorHtml;
         }
     }
 }
@@ -170,6 +192,11 @@ function getExperimentsForPeptide(peptideId) {
 }
 
 function processAllData() {
+    if (peptidesData.length === 0) {
+        console.log('No peptides data to process');
+        return;
+    }
+    
     // Build enhanced peptide objects with all related data
     var enhancedPeptides = [];
     
@@ -229,20 +256,17 @@ function processAllData() {
             disulfide_bridge: peptide['disulfide_bridge'] || '',
             nature: peptide['nature'] || '',
             
-            // Related data from other sheets
             modifications: modTypes,
             modifications_detail: modifications,
             references: references,
             experiments: experiments,
             transport_types: transportTypes,
             
-            // Literature info
             authors: primaryRef ? primaryRef['authors'] : '',
             title: primaryRef ? primaryRef['title'] : '',
             year: primaryRef ? primaryRef['year'] : '',
             journal: primaryRef ? primaryRef['journal'] : '',
             
-            // Legacy fields for compatibility
             notes: peptide['disulfide_bridge'] ? 'Disulfide bridges: ' + peptide['disulfide_bridge'] : '',
             PDB: null
         };
@@ -256,7 +280,7 @@ function processAllData() {
         filteredPeptides.push(peptidesData[i]);
     }
     
-    console.log('Processed ' + peptidesData.length + ' peptides with all related data');
+    console.log('Processed ' + peptidesData.length + ' peptides');
     
     var currentPage = window.location.pathname.split('/').pop();
     console.log('Current page:', currentPage);
@@ -379,7 +403,7 @@ function calculateChargeDistribution() {
 
 function createLengthChart() {
     var ctx = document.getElementById('lengthChart');
-    if (!ctx) return;
+    if (!ctx || typeof Chart === 'undefined') return;
     
     var distribution = calculateLengthDistribution();
     var labels = Object.keys(distribution);
@@ -404,8 +428,7 @@ function createLengthChart() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } },
-                tooltip: { callbacks: { label: function(context) { return context.raw + ' peptides'; } } }
+                legend: { position: 'top', labels: { font: { size: 10 } } }
             },
             scales: {
                 y: { beginAtZero: true, title: { display: true, text: 'Count', font: { size: 10 } }, ticks: { stepSize: 1, font: { size: 9 } } },
@@ -417,7 +440,7 @@ function createLengthChart() {
 
 function createChargeChart() {
     var ctx = document.getElementById('chargeChart');
-    if (!ctx) return;
+    if (!ctx || typeof Chart === 'undefined') return;
     
     var distribution = calculateChargeDistribution();
     var labels = Object.keys(distribution);
@@ -450,8 +473,7 @@ function createChargeChart() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } },
-                tooltip: { callbacks: { label: function(context) { return context.raw + ' peptides'; } } }
+                legend: { position: 'top', labels: { font: { size: 10 } } }
             },
             scales: {
                 y: { beginAtZero: true, title: { display: true, text: 'Count', font: { size: 10 } }, ticks: { stepSize: 1, font: { size: 9 } } },
@@ -463,7 +485,7 @@ function createChargeChart() {
 
 function createAAChart() {
     var ctx = document.getElementById('aaChart');
-    if (!ctx) return;
+    if (!ctx || typeof Chart === 'undefined') return;
     
     var distribution = calculateAADistribution();
     var labels = Object.keys(distribution);
@@ -490,8 +512,7 @@ function createAAChart() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } },
-                tooltip: { callbacks: { label: function(context) { return context.raw + '% of all residues'; } } }
+                legend: { position: 'top', labels: { font: { size: 10 } } }
             },
             scales: {
                 y: { beginAtZero: true, title: { display: true, text: 'Frequency (%)', font: { size: 10 } }, ticks: { font: { size: 9 } } },
@@ -509,7 +530,7 @@ function initHomePage() {
     displayFeaturedPeptides();
     
     setTimeout(function() {
-        if (peptidesData.length > 0) {
+        if (peptidesData.length > 0 && typeof Chart !== 'undefined') {
             createLengthChart();
             createChargeChart();
             createAAChart();
@@ -890,7 +911,7 @@ function displayBrowseResults() {
 
 function displayTableView(container) {
     var html = '<div class="table-view">' +
-        '<table>' +
+        '<tr>' +
             '<thead>' +
                 <tr>' +
                     '<th onclick="sortBy(\'peptide_name\')">Name</th>' +
@@ -926,7 +947,9 @@ function displayTableView(container) {
         '</tr>';
     }
     
-    html += '</tbody></table></div>';
+    html += '</tbody>' +
+        '</table>' +
+    '</div>';
     container.innerHTML = html;
 }
 
@@ -1036,7 +1059,6 @@ function initPeptidePage() {
     }
     
     document.title = peptide.peptide_name + ' - BarrPeps Database';
-    
     displayPeptideDetail(peptide);
 }
 
@@ -1186,8 +1208,8 @@ window.applyAllFilters = applyAllFilters;
 window.resetAllFilters = resetAllFilters;
 window.downloadResults = downloadResults;
 
+// Start loading
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, starting Excel load...');
-    // Small delay to ensure libraries are loaded
-    setTimeout(loadExcelData, 100);
+    console.log('DOM loaded, starting data load...');
+    setTimeout(loadExcelData, 200);
 });
