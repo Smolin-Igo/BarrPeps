@@ -1,4 +1,4 @@
-// BarrPeps Database - Full Version with Fixed Table View
+// BarrPeps Database - Full Version with Fixed Modifications and Experiments Table
 
 let peptidesData = [];
 let experimentsData = [];
@@ -110,10 +110,11 @@ function simplifyModification(modStr) {
     if (lower.includes('toxin')) return 'Toxin conjugated';
     if (lower.includes('drug')) return 'Drug conjugated';
     
-    return null;
+    return modStr;
 }
 
 function processAllData() {
+    // Build maps for related data
     var experimentsMap = {};
     for (var i = 0; i < experimentsData.length; i++) {
         var exp = experimentsData[i];
@@ -144,6 +145,7 @@ function processAllData() {
         }
     }
     
+    // Build enhanced peptides
     var enhanced = [];
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
@@ -152,21 +154,22 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        var uniqueMods = [];
+        // Collect ALL modifications (no simplification, keep original values)
+        var allMods = [];
         var seenMods = {};
         var modsForPeptide = modificationsMap[pid] || [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
-            var simplified = simplifyModification(modVal);
-            if (simplified && !seenMods[simplified]) {
-                seenMods[simplified] = true;
-                uniqueMods.push(simplified);
+            if (modVal && modVal !== 'N/A' && modVal !== '' && !seenMods[modVal]) {
+                seenMods[modVal] = true;
+                allMods.push(modVal);
             }
         }
         
+        // Also check sequence for amidated flag
         if (rawSeq.indexOf('-NH2') !== -1 || rawSeq.indexOf('NH2') !== -1) {
             if (!seenMods['Amidated']) {
-                uniqueMods.push('Amidated');
+                allMods.push('Amidated');
                 seenMods['Amidated'] = true;
             }
         }
@@ -186,7 +189,7 @@ function processAllData() {
             source_organism: p['origin'] || p['source_organism'] || 'N/A',
             experiments: experimentsMap[pid] || [],
             references: referencesMap[pid] || [],
-            modifications: uniqueMods,
+            modifications: allMods,
             notes: p['notes'] || ''
         });
     }
@@ -438,7 +441,7 @@ function initModificationSelector() {
         var mods = peptidesData[i].modifications;
         for (var j = 0; j < mods.length; j++) {
             var mod = mods[j];
-            if (mod && mod !== 'N/A') {
+            if (mod && mod !== 'N/A' && mod !== '') {
                 modTypes[mod] = true;
             }
         }
@@ -603,16 +606,16 @@ function displayBrowseResults() {
 
 function displayTableView(container) {
     var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
-        '<table style="width:100%; border-collapse: collapse; min-width: 800px;">' +
+        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 800px;">' +
             '<thead>' +
                 '<tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 15%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 5%;">Details</th>' +
+                    '<th class="name-cell" style="padding: 12px 8px; text-align: left; width: 15%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th class="sequence-cell" style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th class="length-cell" style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th class="mw-cell" style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th class="structure-cell" style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
+                    '<th class="source-cell" style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
+                    '<th class="details-cell" style="padding: 12px 8px; text-align: left; width: 5%;">Details</th>' +
                 '</tr>' +
             '</thead>' +
             '<tbody>';
@@ -717,7 +720,7 @@ function initPeptidePage() {
     }
     
     document.title = peptide.peptide_name + ' - BarrPeps';
-    displayPeptideDetail(peptide);
+    displayFullPeptideDetail(peptide);
 }
 
 function formatSequenceWithMods(seq) {
@@ -729,43 +732,92 @@ function formatSequenceWithMods(seq) {
         .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH₂</span>');
 }
 
-function formatResultWithUnit(exp) {
-    var result = exp['result'];
-    var unit = exp['unit'];
-    if (result !== undefined && result !== null && result !== '') {
-        return result + (unit ? ' ' + unit : '');
-    }
-    return null;
-}
-
-function displayPeptideDetail(peptide) {
+function displayFullPeptideDetail(peptide) {
+    // Modifications - show ALL
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
+        var modList = [];
+        for (var i = 0; i < peptide.modifications.length; i++) {
+            modList.push(peptide.modifications[i]);
+        }
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">' + peptide.modifications.join(', ') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-value">' + modList.join(', ') + '</span></div>' +
+            '</div>';
+    } else {
+        modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
+            '<div class="detail-row"><span class="detail-value">None reported</span></div>' +
             '</div>';
     }
     
+    // Experiments as TABLE
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
-        for (var i = 0; i < Math.min(peptide.experiments.length, 5); i++) {
+        experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
+            '<div class="table-wrapper" style="overflow-x: auto;">' +
+            '<table style="width:100%; border-collapse: collapse; font-size: 0.75rem;">' +
+            '<thead>' +
+            '<tr style="background: #e2e8f0;">' +
+            '<th style="padding: 8px; text-align: left;">Method</th>' +
+            '<th style="padding: 8px; text-align: left;">Type</th>' +
+            '<th style="padding: 8px; text-align: left;">Response</th>' +
+            '<th style="padding: 8px; text-align: left;">Result</th>' +
+            '<th style="padding: 8px; text-align: left;">Transport</th>' +
+            '<th style="padding: 8px; text-align: left;">Model/Cell Line</th>' +
+            '</tr>' +
+            '</thead>' +
+            '<tbody>';
+        
+        for (var i = 0; i < peptide.experiments.length; i++) {
             var exp = peptide.experiments[i];
-            var expHtml = '<div class="experiment-item" style="margin-bottom:0.75rem;padding:0.5rem;background:#f0f4f8;border-radius:6px;">';
-            if (exp['method']) expHtml += '<div><strong>Method:</strong> ' + exp['method'] + '</div>';
-            if (exp['method_type']) expHtml += '<div><strong>Type:</strong> ' + exp['method_type'] + '</div>';
-            if (exp['response']) expHtml += '<div><strong>Response:</strong> ' + exp['response'] + '</div>';
-            var resWithUnit = formatResultWithUnit(exp);
-            if (resWithUnit) expHtml += '<div><strong>Result:</strong> ' + resWithUnit + '</div>';
-            if (exp['transport_type']) expHtml += '<div><strong>Transport:</strong> ' + exp['transport_type'] + '</div>';
-            expHtml += '</div>';
-            experimentsHtml += expHtml;
+            var resultVal = exp['result'] !== undefined && exp['result'] !== null ? exp['result'] : '';
+            var unit = exp['unit'] || '';
+            var resultDisplay = resultVal ? resultVal + (unit ? ' ' + unit : '') : 'N/A';
+            
+            var modelDisplay = exp['cell_line'] || exp['animal_model'] || 'N/A';
+            
+            experimentsHtml += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
+                '<td style="padding: 8px;">' + (exp['method'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + (exp['method_type'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + (exp['response'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + resultDisplay + '</td>' +
+                '<td style="padding: 8px;">' + (exp['transport_type'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + modelDisplay + '</td>' +
+            '</tr>';
         }
+        
+        experimentsHtml += '</tbody></table></div></div>';
+    } else {
+        experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
+            '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
-    if (experimentsHtml === '') {
-        experimentsHtml = '<div class="detail-section"><div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
+    // References
+    var referencesHtml = '';
+    if (peptide.references && peptide.references.length > 0) {
+        referencesHtml = '<div class="detail-section"><h3>References</h3>';
+        for (var i = 0; i < peptide.references.length; i++) {
+            var ref = peptide.references[i];
+            var authors = ref['authors'] || '';
+            var year = ref['year'] || '';
+            var title = ref['title'] || '';
+            var journal = ref['journal'] || '';
+            
+            var refText = '';
+            if (authors && year && title && journal) {
+                refText = authors + ' (' + year + '). ' + title + '. ' + journal + '.';
+            } else if (authors && year) {
+                refText = authors + ' (' + year + ').';
+            } else if (title) {
+                refText = title;
+            } else {
+                refText = 'Reference ' + (i + 1);
+            }
+            referencesHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;"><span class="detail-value">' + refText + '</span></div>';
+        }
+        referencesHtml += '</div>';
     } else {
-        experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' + experimentsHtml + '</div>';
+        referencesHtml = '<div class="detail-section"><h3>References</h3>' +
+            '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
     }
     
     var html = '<div class="peptide-detail-container">' +
@@ -776,18 +828,18 @@ function displayPeptideDetail(peptide) {
         '</div>' +
         
         '<div class="detail-section"><h3>Basic Information</h3>' +
-            '<div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Clean Sequence:</span><span class="detail-value" style="font-family:monospace;">' + (peptide.sequence_clean || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">3-Letter Seq:</span><span class="detail-value">' + (peptide.sequence_three_letter || 'N/A') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Sequence (with modifications):</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Clean sequence:</span><span class="detail-value" style="font-family:monospace;">' + (peptide.sequence_clean || 'N/A') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">3-letter sequence:</span><span class="detail-value" style="word-break:break-all;">' + (peptide.sequence_three_letter || 'N/A') + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">' + (peptide.length || 'N/A') + ' aa</span></div>' +
-            '<div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(2) : 'N/A') + ' Da</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Molecular Weight:</span><span class="detail-value">' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(2) : 'N/A') + ' Da</span></div>' +
             (peptide.molecular_formula ? '<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">' + peptide.molecular_formula + '</span></div>' : '') +
         '</div>' +
         
         (peptide.structure_type && peptide.structure_type !== 'N/A' ? 
             '<div class="detail-section"><h3>Structural Properties</h3>' +
                 '<div class="detail-row"><span class="detail-label">Structure:</span><span class="detail-value">' + peptide.structure_type + '</span></div>' +
-                (peptide.disulfide_bridge ? '<div class="detail-row"><span class="detail-label">Disulfide:</span><span class="detail-value">' + peptide.disulfide_bridge + '</span></div>' : '') +
+                (peptide.disulfide_bridge ? '<div class="detail-row"><span class="detail-label">Disulfide bridges:</span><span class="detail-value">' + peptide.disulfide_bridge + '</span></div>' : '') +
             '</div>' : '') +
         
         (peptide.source_organism && peptide.source_organism !== 'N/A' ? 
@@ -797,6 +849,7 @@ function displayPeptideDetail(peptide) {
         
         modsHtml +
         experimentsHtml +
+        referencesHtml +
         
         (peptide.notes ? 
             '<div class="detail-section"><h3>Notes</h3>' +
