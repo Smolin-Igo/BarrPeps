@@ -1,4 +1,4 @@
-// BarrPeps Database - Full Version with Fixed Table View and Filters
+// BarrPeps Database - Full Version with Fixed Table View
 
 let peptidesData = [];
 let experimentsData = [];
@@ -91,7 +91,6 @@ function useFallbackData() {
     processAllData();
 }
 
-// Simplify modification types
 function simplifyModification(modStr) {
     if (!modStr) return null;
     var lower = modStr.toLowerCase();
@@ -115,7 +114,6 @@ function simplifyModification(modStr) {
 }
 
 function processAllData() {
-    // Build maps for related data
     var experimentsMap = {};
     for (var i = 0; i < experimentsData.length; i++) {
         var exp = experimentsData[i];
@@ -146,7 +144,6 @@ function processAllData() {
         }
     }
     
-    // Build enhanced peptides
     var enhanced = [];
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
@@ -155,7 +152,6 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        // Collect unique modifications (simplified, no duplicates)
         var uniqueMods = [];
         var seenMods = {};
         var modsForPeptide = modificationsMap[pid] || [];
@@ -168,7 +164,6 @@ function processAllData() {
             }
         }
         
-        // Also check sequence for amidated flag
         if (rawSeq.indexOf('-NH2') !== -1 || rawSeq.indexOf('NH2') !== -1) {
             if (!seenMods['Amidated']) {
                 uniqueMods.push('Amidated');
@@ -296,9 +291,7 @@ function createLengthChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { 
-                legend: { position: 'top' }
-            },
+            plugins: { legend: { position: 'top' } },
             scales: { 
                 y: { beginAtZero: true, title: { display: true, text: 'Count' }, ticks: { stepSize: 1, precision: 0 } }, 
                 x: { title: { display: true, text: 'Length (amino acids)' } }
@@ -329,9 +322,7 @@ function createAAChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { 
-                legend: { position: 'top' }
-            },
+            plugins: { legend: { position: 'top' } },
             scales: { 
                 y: { beginAtZero: true, title: { display: true, text: 'Frequency (%)' } }, 
                 x: { title: { display: true, text: 'Amino Acid' } }
@@ -390,7 +381,7 @@ function displayFeaturedPeptides() {
     container.innerHTML = html;
 }
 
-// ========== BROWSE PAGE WITH FIXED TABLE VIEW ==========
+// ========== BROWSE PAGE ==========
 function initBrowsePage() {
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
@@ -611,18 +602,18 @@ function displayBrowseResults() {
 }
 
 function displayTableView(container) {
-    var html = '<div class="table-view">' +
-        '<table>' +
+    var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
+        '<table style="width:100%; border-collapse: collapse; min-width: 800px;">' +
             '<thead>' +
-                '<tr>' +
-                    '<th style="width:15%;" onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th style="width:40%;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th style="width:8%;" onclick="sortBy(\'length\')">Length</th>' +
-                    '<th style="width:10%;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th style="width:10%;" onclick="sortBy(\'structure_type\')">Structure</th>' +
-                    '<th style="width:12%;" onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th style="width:5%;">Details</th>' +
-                '</table>' +
+                '<tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 15%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 5%;">Details</th>' +
+                '</tr>' +
             '</thead>' +
             '<tbody>';
     
@@ -632,14 +623,14 @@ function displayTableView(container) {
             (p.sequence_one_letter.length > 40 ? p.sequence_one_letter.substring(0,40) + '...' : p.sequence_one_letter) : 'N/A';
         var url = getPeptideUrl(p.id, p.peptide_name);
         
-        html += '<tr>' +
-            '<td style="padding: 0.7rem 0.5rem; word-break: break-word;"><a href="' + url + '" style="color:#2c5282;font-weight:bold;">' + (p.peptide_name || 'N/A') + '</a></td>' +
-            '<td style="font-family:monospace;font-size:0.65rem; word-break: break-all;">' + seqShort + '</td>' +
-            '<td>' + (p.length || 'N/A') + '</td>' +
-            '<td>' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
-            '<td>' + (p.structure_type || 'N/A') + '</td>' +
-            '<td>' + (p.source_organism || 'N/A') + '</td>' +
-            '<td><a href="' + url + '" class="btn-primary" style="padding:0.25rem 0.6rem;font-size:0.65rem;text-decoration:none;">View</a></td>' +
+        html += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
+            '<td style="padding: 10px 8px; word-break: break-word;"><a href="' + url + '" style="color:#2c5282; font-weight:bold; text-decoration:none;">' + (p.peptide_name || 'N/A') + '</a></td>' +
+            '<td style="padding: 10px 8px; font-family: monospace; font-size: 0.7rem; word-break: break-all;">' + seqShort + '</td>' +
+            '<td style="padding: 10px 8px;">' + (p.length || 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px;">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px;">' + (p.structure_type || 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px;">' + (p.source_organism || 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px;"><a href="' + url + '" class="btn-primary" style="display: inline-block; padding: 4px 10px; background: #4299e1; color: white; border-radius: 4px; text-decoration: none; font-size: 0.7rem;">View</a></td>' +
         '</tr>';
     }
     
