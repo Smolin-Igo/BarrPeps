@@ -700,7 +700,7 @@ function formatSequenceWithMods(seq) {
 }
 
 function displayFullPeptideDetail(peptide) {
-    // Modifications - DIRECT from database, NO modifications
+    // Modifications - DIRECT from database
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
         var modList = peptide.modifications.join(', ');
@@ -713,9 +713,30 @@ function displayFullPeptideDetail(peptide) {
             '</div>';
     }
     
-    // Experiments as TABLE
+    // Experiments as TABLE - with duplicate removal
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
+        // Create a map to remove duplicates based on key fields
+        var uniqueExperiments = [];
+        var seenKeys = {};
+        
+        for (var i = 0; i < peptide.experiments.length; i++) {
+            var exp = peptide.experiments[i];
+            
+            // Create a unique key based on method, response, and result
+            var method = exp['method'] || '';
+            var response = exp['response'] || '';
+            var result = exp['result'] !== undefined && exp['result'] !== null ? exp['result'] : '';
+            var unit = exp['unit'] || '';
+            
+            var key = method + '|' + response + '|' + result + '|' + unit;
+            
+            if (!seenKeys[key]) {
+                seenKeys[key] = true;
+                uniqueExperiments.push(exp);
+            }
+        }
+        
         experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
             '<div class="table-wrapper" style="overflow-x: auto;">' +
             '<table style="width:100%; border-collapse: collapse; font-size: 0.75rem;">' +
@@ -731,25 +752,41 @@ function displayFullPeptideDetail(peptide) {
             '</thead>' +
             '<tbody>';
         
-        for (var i = 0; i < peptide.experiments.length; i++) {
-            var exp = peptide.experiments[i];
+        for (var i = 0; i < uniqueExperiments.length; i++) {
+            var exp = uniqueExperiments[i];
             var resultVal = exp['result'] !== undefined && exp['result'] !== null ? exp['result'] : '';
             var unit = exp['unit'] || '';
-            var resultDisplay = resultVal ? resultVal + (unit ? ' ' + unit : '') : 'N/A';
+            var resultDisplay = (resultVal !== '' && resultVal !== null) ? resultVal + (unit ? ' ' + unit : '') : 'N/A';
             
             var modelDisplay = exp['cell_line'] || exp['animal_model'] || 'N/A';
+            var methodDisplay = exp['method'] || 'N/A';
+            var typeDisplay = exp['method_type'] || 'N/A';
+            var responseDisplay = exp['response'] || 'N/A';
+            var transportDisplay = exp['transport_type'] || 'N/A';
+            
+            // Skip completely empty rows
+            if (methodDisplay === 'N/A' && typeDisplay === 'N/A' && responseDisplay === 'N/A' && 
+                resultDisplay === 'N/A' && transportDisplay === 'N/A' && modelDisplay === 'N/A') {
+                continue;
+            }
             
             experimentsHtml += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
-                '<td style="padding: 8px;">' + (exp['method'] || 'N/A') + '</td>' +
-                '<td style="padding: 8px;">' + (exp['method_type'] || 'N/A') + '</td>' +
-                '<td style="padding: 8px;">' + (exp['response'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + methodDisplay + '</td>' +
+                '<td style="padding: 8px;">' + typeDisplay + '</td>' +
+                '<td style="padding: 8px;">' + responseDisplay + '</td>' +
                 '<td style="padding: 8px;">' + resultDisplay + '</td>' +
-                '<td style="padding: 8px;">' + (exp['transport_type'] || 'N/A') + '</td>' +
+                '<td style="padding: 8px;">' + transportDisplay + '</td>' +
                 '<td style="padding: 8px;">' + modelDisplay + '</td>' +
             '</tr>';
         }
         
         experimentsHtml += '</tbody></table></div></div>';
+        
+        // If after filtering there are no rows, show message
+        if (experimentsHtml.indexOf('<tr') === -1 || experimentsHtml.indexOf('</td>') === experimentsHtml.lastIndexOf('</table>') - 6) {
+            experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
+                '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
+        }
     } else {
         experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
             '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
