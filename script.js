@@ -1,4 +1,4 @@
-// BarrPeps Database - Full Version with Fixed Modifications and Experiments Table
+// BarrPeps Database - Full Version with Fixed Modifications
 
 let peptidesData = [];
 let experimentsData = [];
@@ -85,32 +85,9 @@ function useFallbackData() {
     console.log('Using fallback data');
     peptidesData = [
         { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", sequence_3: "ThrPhePheTyrGlyGlySerArgGlyLysArgAsnAsnPheLysThrGluGluTyr", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
-        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", sequence_3: "GlyIleValGluGlnCysCysThrSerIleCysSerLeuTyrGlnLeuGluAsnTyrCysAsn", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" },
-        { peptide_id: 3, trivial_name: "dynantin", sequence_1: "GGFLRRIRPK", sequence_3: "GlyGlyPheLeuArgArgIleArgProLys", length: 10, molecular_weight: 1388.71, origin: "synthetic", conformation: "Linear" }
+        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", sequence_3: "GlyIleValGluGlnCysCysThrSerIleCysSerLeuTyrGlnLeuGluAsnTyrCysAsn", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" }
     ];
     processAllData();
-}
-
-function simplifyModification(modStr) {
-    if (!modStr) return null;
-    var lower = modStr.toLowerCase();
-    
-    if (lower.includes('conjugated') || lower.includes('conjugate')) return 'Conjugated';
-    if (lower.includes('amidated') || lower.includes('amidation') || lower.includes('-nh2')) return 'Amidated';
-    if (lower.includes('acetylated') || lower.includes('acetyl')) return 'Acetylated';
-    if (lower.includes('methylated') || lower.includes('methyl')) return 'Methylated';
-    if (lower.includes('glycosylated') || lower.includes('glyco')) return 'Glycosylated';
-    if (lower.includes('phosphorylated') || lower.includes('phospho')) return 'Phosphorylated';
-    if (lower.includes('cyclized') || lower.includes('cyclic')) return 'Cyclized';
-    if (lower.includes('lipidated') || lower.includes('lipid')) return 'Lipidated';
-    if (lower.includes('myristoylated')) return 'Myristoylated';
-    if (lower.includes('peg')) return 'PEGylated';
-    if (lower.includes('biotin')) return 'Biotinylated';
-    if (lower.includes('fluorescent')) return 'Fluorescent';
-    if (lower.includes('toxin')) return 'Toxin conjugated';
-    if (lower.includes('drug')) return 'Drug conjugated';
-    
-    return modStr;
 }
 
 function processAllData() {
@@ -154,23 +131,13 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        // Collect ALL modifications (no simplification, keep original values)
+        // Get ALL modifications directly from modifications table - NO extra checks
         var allMods = [];
-        var seenMods = {};
         var modsForPeptide = modificationsMap[pid] || [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
-            if (modVal && modVal !== 'N/A' && modVal !== '' && !seenMods[modVal]) {
-                seenMods[modVal] = true;
+            if (modVal && modVal !== 'N/A' && modVal !== '') {
                 allMods.push(modVal);
-            }
-        }
-        
-        // Also check sequence for amidated flag
-        if (rawSeq.indexOf('-NH2') !== -1 || rawSeq.indexOf('NH2') !== -1) {
-            if (!seenMods['Amidated']) {
-                allMods.push('Amidated');
-                seenMods['Amidated'] = true;
             }
         }
         
@@ -733,19 +700,10 @@ function formatSequenceWithMods(seq) {
 }
 
 function displayFullPeptideDetail(peptide) {
-    // Modifications - remove duplicates
+    // Modifications - DIRECT from database, NO modifications
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
-        var uniqueMods = [];
-        var seen = {};
-        for (var i = 0; i < peptide.modifications.length; i++) {
-            var mod = peptide.modifications[i];
-            if (!seen[mod]) {
-                seen[mod] = true;
-                uniqueMods.push(mod);
-            }
-        }
-        var modList = uniqueMods.join(', ');
+        var modList = peptide.modifications.join(', ');
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
             '<div class="detail-row"><span class="detail-value">' + modList + '</span></div>' +
             '</div>';
