@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>BarrPeps - Blood-Brain Barrier Penetrating Peptides Database</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         .stats-grid {
@@ -109,7 +109,7 @@
             }
             
             .charts-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, 1fr);
                 gap: 1.5rem;
             }
             
@@ -171,10 +171,6 @@
                     <div class="stat-number" id="avgLength">-</div>
                     <div class="stat-label">Average Length (aa)</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="avgCharge">-</div>
-                    <div class="stat-label">Average Net Charge</div>
-                </div>
             </div>
         </section>
 
@@ -185,12 +181,6 @@
                     <h3>📏 Length Distribution</h3>
                     <div class="chart-container">
                         <canvas id="lengthChart"></canvas>
-                    </div>
-                </div>
-                <div class="chart-card">
-                    <h3>⚡ Net Charge Distribution</h3>
-                    <div class="chart-container">
-                        <canvas id="chargeChart"></canvas>
                     </div>
                 </div>
                 <div class="chart-card">
