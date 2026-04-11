@@ -271,6 +271,123 @@ main {
     font-size: 0.75rem;
 }
 
+/* Search Panel */
+.filters-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border: 1px solid #e2e8f0;
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-field label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #4a5568;
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+}
+
+.filter-field input, .filter-field select {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    background: white;
+    width: 100%;
+}
+
+.range-group {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+
+.range-group input {
+    width: 100%;
+}
+
+.range-group span {
+    font-size: 0.7rem;
+    color: #718096;
+}
+
+.aa-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.2rem;
+}
+
+.aa-btn-compact {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e0;
+    background: white;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.7rem;
+    transition: all 0.2s;
+}
+
+.aa-btn-compact.selected {
+    background: #4299e1;
+    color: white;
+    border-color: #4299e1;
+}
+
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #edf2f7;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.results-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.download-btn {
+    background: #48bb78;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.download-btn:hover {
+    background: #38a169;
+}
+
 /* Results Header */
 .results-header {
     display: flex;
@@ -309,27 +426,28 @@ main {
     border-color: #4299e1;
 }
 
-/* Table View */
-.table-view {
+/* Table View - Improved */
+.table-wrapper {
     overflow-x: auto;
     margin: 0 -0.5rem;
     padding: 0 0.5rem;
 }
 
-table {
+.data-table {
     width: 100%;
-    min-width: 650px;
+    min-width: 800px;
     border-collapse: collapse;
     font-size: 0.75rem;
 }
 
-th, td {
+.data-table th, 
+.data-table td {
     padding: 0.7rem 0.5rem;
     text-align: left;
     border-bottom: 1px solid #e2e8f0;
 }
 
-th {
+.data-table th {
     background: #f7fafc;
     font-weight: 700;
     color: #4a5568;
@@ -340,12 +458,198 @@ th {
     white-space: nowrap;
 }
 
-th:hover {
+.data-table th:hover {
     background: #edf2f7;
 }
 
-td {
+.data-table td {
     word-break: break-word;
+}
+
+.data-table .name-cell {
+    width: 15%;
+}
+
+.data-table .sequence-cell {
+    width: 40%;
+}
+
+.data-table .length-cell {
+    width: 8%;
+}
+
+.data-table .mw-cell {
+    width: 10%;
+}
+
+.data-table .structure-cell {
+    width: 10%;
+}
+
+.data-table .source-cell {
+    width: 12%;
+}
+
+.data-table .details-cell {
+    width: 5%;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.activity-high {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.activity-medium {
+    background: #feebc8;
+    color: #7b341e;
+}
+
+.activity-low {
+    background: #fed7d7;
+    color: #742a2a;
+}
+
+/* Structure Viewer */
+.structure-viewer {
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 0.8rem;
+    margin-bottom: 1.25rem;
+}
+
+.structure-viewer h3 {
+    font-size: 0.9rem;
+    margin-bottom: 0.6rem;
+    color: #2c5282;
+}
+
+.structure-container {
+    position: relative;
+    width: 100%;
+    height: 260px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.structure-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.structure-controls button {
+    padding: 0.35rem 0.7rem;
+    background: #4299e1;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 500;
+    min-height: 32px;
+}
+
+.structure-controls button:active {
+    background: #3182ce;
+    transform: scale(0.97);
+}
+
+.structure-controls button.active {
+    background: #2c5282;
+}
+
+.structure-controls button[onclick*="rotatePDB"] {
+    display: none;
+}
+
+.structure-legend {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.6rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    font-size: 0.65rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+
+.legend-color.carbon {
+    background: #808080;
+}
+
+.legend-color.oxygen {
+    background: #ff3333;
+}
+
+.legend-color.nitrogen {
+    background: #3333ff;
+}
+
+.legend-color.sulfur {
+    background: #ffcc00;
+}
+
+.legend-color.hydrogen {
+    background: #ffffff;
+    border: 1px solid #cbd5e0;
+}
+
+.legend-color.disulfide {
+    background: #ffaa00;
+    border: 1px solid #cc8800;
+}
+
+.no-structure {
+    text-align: center;
+    padding: 1.5rem;
+    color: #718096;
+    font-size: 0.8rem;
+}
+
+.pdb-info {
+    background: #ebf8ff;
+    padding: 0.4rem;
+    border-radius: 6px;
+    margin-top: 0.5rem;
+    font-size: 0.65rem;
+    text-align: center;
+}
+
+.pdb-info a {
+    color: #4299e1;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.smiles-container {
+    background: #fef5e7;
+    padding: 0.5rem;
+    border-radius: 6px;
+    margin-top: 0.25rem;
 }
 
 /* Peptide Detail Page */
@@ -451,6 +755,40 @@ td {
     line-height: 1.5;
 }
 
+/* Style for clickable peptide name in table */
+.peptide-name-link {
+    text-decoration: none;
+    color: #2c5282;
+    font-weight: bold;
+    display: inline-block;
+    padding: 0.2rem 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.peptide-name-link:hover {
+    border-bottom-color: #4299e1;
+}
+
+.peptide-name-link:active {
+    color: #1a365d;
+}
+
+/* Modification styles */
+.modification {
+    background-color: #fef5e7;
+    color: #d69e2e;
+    padding: 0.1rem 0.2rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: normal;
+    cursor: help;
+}
+
+.modification:hover {
+    background-color: #fbd38d;
+}
+
 /* Loading & Error */
 .loading, .error-message {
     text-align: center;
@@ -494,6 +832,52 @@ td {
 .page-header p {
     font-size: 0.8rem;
     color: #718096;
+}
+
+/* Charts Section */
+.charts-section {
+    margin-top: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.charts-section h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    color: #2c5282;
+    font-weight: 600;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.chart-card h3 {
+    font-size: 0.9rem;
+    color: #2c5282;
+    margin-bottom: 0.75rem;
+    text-align: center;
+    font-weight: 600;
+}
+
+.chart-container {
+    position: relative;
+    height: 250px;
+    width: 100%;
+}
+
+canvas {
+    max-height: 250px;
+    width: 100%;
 }
 
 /* Footer */
@@ -549,7 +933,11 @@ footer {
     100% { transform: rotate(360deg); }
 }
 
-/* Tablet Styles */
+/* ============================================ */
+/* DESKTOP STYLES - LARGER ELEMENTS */
+/* ============================================ */
+
+/* Tablet Styles (640px and up) */
 @media (min-width: 640px) {
     .stats-grid {
         max-width: 300px;
@@ -560,87 +948,345 @@ footer {
         grid-template-columns: repeat(2, 1fr);
         gap: 1.25rem;
     }
+    
+    .structure-container {
+        height: 280px;
+    }
+    
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
+/* Desktop Styles (768px and up) - INCREASED SIZES */
 @media (min-width: 768px) {
     body {
         font-size: 1rem;
     }
     
     main {
-        padding: 1.2rem;
+        padding: 1.5rem;
+    }
+    
+    /* Larger header for desktop */
+    .nav-brand h1 {
+        font-size: 1.8rem;
+    }
+    
+    .nav-brand p {
+        font-size: 0.7rem;
+    }
+    
+    .nav-links a {
+        font-size: 1rem;
+        padding: 0.5rem 0;
     }
     
     .hero {
-        padding: 2rem 1.5rem;
-        margin-bottom: 2rem;
+        padding: 2.5rem 2rem;
+        margin-bottom: 2.5rem;
+        border-radius: 20px;
     }
     
     .hero h1 {
-        font-size: 2.2rem;
+        font-size: 2.8rem;
+        margin-bottom: 0.75rem;
     }
     
     .hero .tagline {
+        font-size: 1.2rem;
+        margin-bottom: 1.75rem;
+    }
+    
+    .hero-buttons {
+        gap: 1rem;
+    }
+    
+    .btn-primary, .btn-secondary {
+        padding: 0.9rem 2rem;
         font-size: 1rem;
-        margin-bottom: 1.5rem;
+        border-radius: 10px;
+        min-height: 52px;
     }
     
     .stats-section h2, .about-section h2, .featured-section h2 {
-        font-size: 1.5rem;
-        margin-bottom: 1.25rem;
+        font-size: 1.8rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+        padding: 1.5rem;
+        border-radius: 16px;
     }
     
     .stat-number {
-        font-size: 2.5rem;
+        font-size: 3rem;
+    }
+    
+    .stat-label {
+        font-size: 0.85rem;
+    }
+    
+    .about-content {
+        padding: 1.5rem;
+        border-radius: 16px;
     }
     
     .about-text p {
-        font-size: 0.95rem;
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+    
+    .peptide-grid {
+        gap: 1.5rem;
+    }
+    
+    .peptide-card {
+        padding: 1.25rem;
+        border-radius: 16px;
+    }
+    
+    .card-header h3 {
+        font-size: 1.2rem;
+    }
+    
+    .card-content {
+        font-size: 0.9rem;
+    }
+    
+    .card-label {
+        min-width: 100px;
+        font-size: 0.75rem;
+    }
+    
+    .card-value {
+        font-size: 0.85rem;
+    }
+    
+    .filters-panel {
+        padding: 1.25rem;
+    }
+    
+    .filter-field label {
+        font-size: 0.7rem;
+    }
+    
+    .filter-field input, .filter-field select {
+        padding: 0.5rem 0.6rem;
+        font-size: 0.8rem;
+    }
+    
+    .aa-btn-compact {
+        width: 32px;
+        height: 32px;
+        font-size: 0.75rem;
+    }
+    
+    .download-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.75rem;
+    }
+    
+    .results-header {
+        margin-bottom: 1.5rem;
+    }
+    
+    .results-count {
+        font-size: 1rem;
+    }
+    
+    .toggle-btn {
+        padding: 0.5rem 1.2rem;
+        font-size: 0.85rem;
+        border-radius: 8px;
+    }
+    
+    .data-table {
+        font-size: 0.9rem;
+        min-width: 800px;
+    }
+    
+    .data-table th, 
+    .data-table td {
+        padding: 1rem 0.75rem;
+    }
+    
+    .data-table th {
+        font-size: 0.8rem;
+    }
+    
+    .badge {
+        padding: 0.3rem 0.7rem;
+        font-size: 0.75rem;
+    }
+    
+    .structure-viewer {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .structure-viewer h3 {
+        font-size: 1rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .structure-container {
+        height: 320px;
+        border-radius: 10px;
+    }
+    
+    .structure-controls button {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+        min-height: 38px;
+        border-radius: 8px;
+    }
+    
+    .structure-legend {
+        font-size: 0.75rem;
+        gap: 1.2rem;
+    }
+    
+    .legend-color {
+        width: 16px;
+        height: 16px;
+    }
+    
+    .peptide-detail-container {
+        padding: 1.5rem;
+        border-radius: 16px;
+    }
+    
+    .detail-section {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        border-radius: 12px;
+        border-left-width: 4px;
+    }
+    
+    .detail-section h3 {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
     }
     
     .detail-row {
         flex-direction: row;
-        gap: 0.8rem;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
     }
     
     .detail-label {
-        width: 150px;
+        width: 160px;
         flex-shrink: 0;
+        font-size: 0.8rem;
     }
     
     .detail-value {
+        font-size: 1rem;
+    }
+    
+    .page-header {
+        margin-bottom: 1.5rem;
+    }
+    
+    .page-header h1 {
+        font-size: 2rem;
+    }
+    
+    .page-header p {
         font-size: 0.95rem;
     }
     
     .footer-content {
         grid-template-columns: repeat(3, 1fr);
-        padding: 1.5rem;
+        padding: 1.8rem;
+        gap: 2rem;
+    }
+    
+    .footer-section h3 {
+        font-size: 1rem;
+        margin-bottom: 0.8rem;
+    }
+    
+    .footer-section p, .footer-section a {
+        font-size: 0.8rem;
+    }
+    
+    .footer-bottom {
+        padding: 0.8rem;
+        font-size: 0.7rem;
+    }
+    
+    .charts-section h2 {
+        font-size: 1.5rem;
+    }
+    
+    .chart-card h3 {
+        font-size: 1rem;
+    }
+    
+    .chart-container {
+        height: 280px;
     }
 }
 
-/* Desktop Styles */
+/* Large Desktop Styles (1024px and up) */
 @media (min-width: 1024px) {
+    .hero {
+        padding: 3rem 2rem;
+    }
+    
     .hero h1 {
-        font-size: 2.5rem;
+        font-size: 3.2rem;
     }
     
     .hero .tagline {
-        font-size: 1.1rem;
+        font-size: 1.3rem;
     }
     
     .peptide-grid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
+        gap: 1.75rem;
     }
     
     .stat-number {
-        font-size: 2.8rem;
+        font-size: 3.5rem;
+    }
+    
+    .structure-container {
+        height: 340px;
+    }
+    
+    .detail-label {
+        width: 180px;
+    }
+    
+    .chart-container {
+        height: 300px;
     }
 }
 
+/* Extra Large Desktop Styles (1280px and up) */
 @media (min-width: 1280px) {
     .peptide-grid {
         grid-template-columns: repeat(4, 1fr);
+        gap: 2rem;
+    }
+    
+    .hero h1 {
+        font-size: 3.5rem;
+    }
+    
+    .hero .tagline {
+        font-size: 1.4rem;
+    }
+    
+    .structure-container {
+        height: 360px;
+    }
+    
+    .detail-label {
+        width: 200px;
     }
 }
 
@@ -650,6 +1296,7 @@ footer {
     .btn-primary, 
     .btn-secondary,
     .toggle-btn,
+    .structure-controls button,
     .peptide-card,
     .nav-links a,
     .nav-brand {
@@ -660,7 +1307,7 @@ footer {
     .btn-primary:active,
     .btn-secondary:active,
     .toggle-btn:active,
-    .peptide-card:active {
+    .structure-controls button:active {
         opacity: 0.7;
         transform: scale(0.98);
     }
@@ -668,7 +1315,7 @@ footer {
 
 /* Print styles */
 @media print {
-    .navbar, .search-panel, .view-toggle, .hero-buttons, footer, .modal {
+    .navbar, .filters-panel, .view-toggle, .structure-controls, .hero-buttons, footer, .modal, .charts-section {
         display: none;
     }
     
