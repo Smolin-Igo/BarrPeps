@@ -1,5 +1,5 @@
 // BarrPeps Database - Main JavaScript
-// Direct Excel file reader using SheetJS - reads all 4 sheets
+// Excel File Reader for database.xlsx with 4 sheets
 
 let peptidesData = [];
 let experimentsData = [];
@@ -11,10 +11,8 @@ let sortColumn = 'peptide_name';
 let sortDirection = 'asc';
 let filteredPeptides = [];
 
-// Selected amino acids for filtering
 let selectedAAs = [];
 
-// Chart instances
 let lengthChart = null;
 let chargeChart = null;
 let aaChart = null;
@@ -26,71 +24,72 @@ function getPeptideUrl(peptideId, peptideName) {
 
 function showUnderConstruction() {
     var modal = document.getElementById('underConstructionModal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
+    if (modal) modal.style.display = 'flex';
 }
 
 function closeModal() {
     var modal = document.getElementById('underConstructionModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    if (modal) modal.style.display = 'none';
 }
 
 window.onclick = function(event) {
     var modal = document.getElementById('underConstructionModal');
-    if (event.target === modal) {
-        closeModal();
-    }
+    if (event.target === modal) closeModal();
 }
 
-// ========== EXCEL FILE LOADER - ALL SHEETS ==========
-function loadExcelData() {
-    // Check if XLSX library is loaded
-    if (typeof XLSX === 'undefined') {
-        console.log('XLSX not loaded yet, waiting...');
-        // Try to load with alternative method
-        loadAlternative();
-        return;
-    }
-    
-    console.log('XLSX loaded, starting Excel load...');
+// ========== EXCEL LOADER ==========
+function loadExcelFile() {
+    console.log('Attempting to load database.xlsx...');
     
     fetch('database.xlsx')
         .then(function(response) {
             if (!response.ok) {
-                throw new Error('HTTP error! status: ' + response.status);
+                throw new Error('HTTP error: ' + response.status);
             }
             return response.arrayBuffer();
         })
         .then(function(arrayBuffer) {
+            console.log('Excel file loaded, parsing...');
             var workbook = XLSX.read(arrayBuffer, { type: 'array' });
             
-            var sheets = workbook.SheetNames;
-            console.log('Sheets found:', sheets);
+            var sheetNames = workbook.SheetNames;
+            console.log('Sheets found:', sheetNames);
             
-            for (var s = 0; s < sheets.length; s++) {
-                var sheetName = sheets[s];
+            // Process each sheet
+            for (var s = 0; s < sheetNames.length; s++) {
+                var sheetName = sheetNames[s];
                 var worksheet = workbook.Sheets[sheetName];
-                var data = XLSX.utils.sheet_to_json(worksheet);
+                var jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
-                var sheetLower = sheetName.toLowerCase();
-                if (sheetLower === 'peptides') {
-                    peptidesData = data;
-                    console.log('Loaded ' + peptidesData.length + ' peptides');
-                } else if (sheetLower === 'experiments') {
-                    experimentsData = data;
-                    console.log('Loaded ' + experimentsData.length + ' experiments');
-                } else if (sheetLower === 'references') {
-                    referencesData = data;
-                    console.log('Loaded ' + referencesData.length + ' references');
-                } else if (sheetLower === 'modifications') {
-                    modificationsData = data;
-                    console.log('Loaded ' + modificationsData.length + ' modifications');
+                console.log('Sheet "' + sheetName + '" has ' + jsonData.length + ' rows');
+                
+                // Store data in appropriate array based on sheet name
+                var lowerName = sheetName.toLowerCase();
+                if (lowerName === 'peptides') {
+                    peptidesData = jsonData;
+                } else if (lowerName === 'experiments') {
+                    experimentsData = jsonData;
+                } else if (lowerName === 'references') {
+                    referencesData = jsonData;
+                } else if (lowerName === 'modifications') {
+                    modificationsData = jsonData;
                 }
             }
             
+            // Validate data
+            if (peptidesData.length === 0) {
+                console.warn('No peptides data found in Excel file');
+                showError('No peptides data found in database.xlsx');
+                return;
+            }
+            
+            console.log('Data summary:');
+            console.log('  - Peptides: ' + peptidesData.length);
+            console.log('  - Experiments: ' + experimentsData.length);
+            console.log('  - References: ' + referencesData.length);
+            console.log('  - Modifications: ' + modificationsData.length);
+            
+            // Process and merge all data
             processAllData();
         })
         .catch(function(error) {
@@ -99,36 +98,10 @@ function loadExcelData() {
         });
 }
 
-function loadAlternative() {
-    // Alternative: try to load from a JSON file if available
-    console.log('Trying alternative data source...');
-    
-    fetch('peptides_data.json')
-        .then(function(response) {
-            if (response.ok) {
-                return response.json();
-            }
-            throw new Error('No JSON fallback');
-        })
-        .then(function(data) {
-            console.log('Loaded JSON fallback with ' + data.length + ' entries');
-            // Create simple structure from JSON
-            peptidesData = data;
-            experimentsData = [];
-            referencesData = [];
-            modificationsData = [];
-            processAllData();
-        })
-        .catch(function(error) {
-            console.error('No fallback data available');
-            showError('Could not load data. Please check your internet connection and refresh the page.');
-        });
-}
-
 function showError(message) {
     var errorHtml = '<div class="error-message">' +
         '<p>' + message + '</p>' +
-        '<p>Please ensure database.xlsx is in the same directory and you have internet connection.</p>' +
+        '<p>Please ensure database.xlsx is in the same directory.</p>' +
         '<button onclick="location.reload()" class="btn-primary" style="margin-top: 1rem;">Retry</button>' +
         '</div>';
     
@@ -141,150 +114,146 @@ function showError(message) {
     }
 }
 
-function formatSequenceWithModifications(sequence) {
-    if (!sequence) return 'N/A';
-    
-    var formatted = sequence
-        .replace(/\(Me2\)/g, '<span class="modification" title="Dimethylated">(Me₂)</span>')
-        .replace(/\(D\)/g, '<span class="modification" title="D-amino acid">(D)</span>')
-        .replace(/\(NMe\)/g, '<span class="modification" title="N-methylated">(N-Me)</span>')
-        .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH₂</span>')
-        .replace(/\(NαMe\)/g, '<span class="modification" title="N-alpha-methylated">(Nα-Me)</span>')
-        .replace(/\(3,4-dehydro\)/g, '<span class="modification" title="Dehydro">(3,4-dehydro)</span>')
-        .replace(/\(2\'-N-succinimide-paclitaxel\)/g, '<span class="modification" title="Paclitaxel conjugated">(Paclitaxel)</span>')
-        .replace(/\(Ac\)/g, '<span class="modification" title="Acetylated">(Ac)</span>')
-        .replace(/\(Pen\)/g, '<span class="modification" title="Penicillamine">(Pen)</span>');
-    
-    return formatted;
-}
-
-function getModificationsForPeptide(peptideId) {
-    if (!modificationsData || modificationsData.length === 0) return [];
-    var result = [];
-    for (var i = 0; i < modificationsData.length; i++) {
-        if (modificationsData[i]['peptide_id'] === peptideId) {
-            result.push(modificationsData[i]);
-        }
-    }
-    return result;
-}
-
-function getReferencesForPeptide(peptideId) {
-    if (!referencesData || referencesData.length === 0) return [];
-    var result = [];
-    for (var i = 0; i < referencesData.length; i++) {
-        if (referencesData[i]['peptide_id'] === peptideId) {
-            result.push(referencesData[i]);
-        }
-    }
-    return result;
-}
-
-function getExperimentsForPeptide(peptideId) {
-    if (!experimentsData || experimentsData.length === 0) return [];
-    var result = [];
-    for (var i = 0; i < experimentsData.length; i++) {
-        if (experimentsData[i]['peptide_id'] === peptideId) {
-            result.push(experimentsData[i]);
-        }
-    }
-    return result;
-}
-
+// ========== DATA PROCESSING ==========
 function processAllData() {
-    if (peptidesData.length === 0) {
-        console.log('No peptides data to process');
-        return;
+    console.log('Processing and merging data...');
+    
+    // Create a map for quick lookup of related data
+    var experimentsMap = {};
+    var referencesMap = {};
+    var modificationsMap = {};
+    
+    // Group experiments by peptide_id
+    for (var i = 0; i < experimentsData.length; i++) {
+        var exp = experimentsData[i];
+        var pid = exp['peptide_id'];
+        if (pid) {
+            if (!experimentsMap[pid]) experimentsMap[pid] = [];
+            experimentsMap[pid].push(exp);
+        }
     }
     
-    // Build enhanced peptide objects with all related data
+    // Group references by peptide_id
+    for (var i = 0; i < referencesData.length; i++) {
+        var ref = referencesData[i];
+        var pid = ref['peptide_id'];
+        if (pid) {
+            if (!referencesMap[pid]) referencesMap[pid] = [];
+            referencesMap[pid].push(ref);
+        }
+    }
+    
+    // Group modifications by peptide_id
+    for (var i = 0; i < modificationsData.length; i++) {
+        var mod = modificationsData[i];
+        var pid = mod['peptide_id'];
+        if (pid) {
+            if (!modificationsMap[pid]) modificationsMap[pid] = [];
+            modificationsMap[pid].push(mod);
+        }
+    }
+    
+    // Build enhanced peptide objects
     var enhancedPeptides = [];
     
-    for (var idx = 0; idx < peptidesData.length; idx++) {
-        var peptide = peptidesData[idx];
-        var peptideId = peptide['peptide_id'] || idx + 1;
-        var modifications = getModificationsForPeptide(peptideId);
-        var references = getReferencesForPeptide(peptideId);
-        var experiments = getExperimentsForPeptide(peptideId);
+    for (var i = 0; i < peptidesData.length; i++) {
+        var sourcePeptide = peptidesData[i];
+        var peptideId = sourcePeptide['peptide_id'];
         
-        // Collect unique transport types from experiments
+        if (!peptideId) continue;
+        
+        // Get related data
+        var relatedExperiments = experimentsMap[peptideId] || [];
+        var relatedReferences = referencesMap[peptideId] || [];
+        var relatedModifications = modificationsMap[peptideId] || [];
+        
+        // Extract transport types from experiments
         var transportTypes = [];
-        var seenTypes = {};
-        for (var i = 0; i < experiments.length; i++) {
-            var t = experiments[i]['transport_type'];
-            if (t && !seenTypes[t]) {
-                seenTypes[t] = true;
-                transportTypes.push(t);
+        var seenTransport = {};
+        for (var e = 0; e < relatedExperiments.length; e++) {
+            var tt = relatedExperiments[e]['transport_type'];
+            if (tt && !seenTransport[tt]) {
+                seenTransport[tt] = true;
+                transportTypes.push(tt);
             }
         }
         
-        // Collect modification types
-        var modTypes = [];
+        // Extract modification types
+        var modificationTypes = [];
         var seenMods = {};
-        for (var i = 0; i < modifications.length; i++) {
-            var m = modifications[i]['modifications'];
-            if (m && !seenMods[m]) {
-                seenMods[m] = true;
-                modTypes.push(m);
+        for (var m = 0; m < relatedModifications.length; m++) {
+            var modType = relatedModifications[m]['modifications'];
+            if (modType && !seenMods[modType]) {
+                seenMods[modType] = true;
+                modificationTypes.push(modType);
             }
         }
         
-        // Find best reference
+        // Get primary reference
         var primaryRef = null;
-        for (var i = 0; i < references.length; i++) {
-            if (references[i]['source_ref_id'] && references[i]['authors']) {
-                primaryRef = references[i];
+        for (var r = 0; r < relatedReferences.length; r++) {
+            if (relatedReferences[r]['source_ref_id']) {
+                primaryRef = relatedReferences[r];
                 break;
             }
         }
-        if (!primaryRef && references.length > 0) {
-            primaryRef = references[0];
+        if (!primaryRef && relatedReferences.length > 0) {
+            primaryRef = relatedReferences[0];
         }
         
-        var enhancedPeptide = {
+        // Build clean sequence (remove special characters for length calculation)
+        var rawSequence = sourcePeptide['sequence_1'] || sourcePeptide['sequence_one_letter'] || '';
+        var cleanSequence = rawSequence.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
+        
+        // Create enhanced peptide object
+        var enhanced = {
+            // Basic info
             id: peptideId,
-            peptide_name: peptide['trivial_name'] || peptide['peptide_name'] || 'Peptide_' + peptideId,
-            sequence_one_letter: peptide['sequence_1'] || peptide['sequence_one_letter'] || '',
-            sequence_three_letter: peptide['sequence_3'] || peptide['sequence_three_letter'] || '',
-            length: parseInt(peptide['length']) || 0,
-            molecular_weight: parseFloat(peptide['molecular_weight']) || 0,
-            molecular_formula: peptide['molecular_formula'] || '',
-            net_charge: null,
-            hydrophobicity: null,
-            structure_type: peptide['conformation'] || peptide['structure_type'] || '',
-            source_organism: peptide['origin'] || peptide['source_organism'] || '',
-            disulfide_bridge: peptide['disulfide_bridge'] || '',
-            nature: peptide['nature'] || '',
+            peptide_name: sourcePeptide['trivial_name'] || sourcePeptide['peptide_name'] || 'Peptide_' + peptideId,
+            sequence_one_letter: rawSequence,
+            sequence_clean: cleanSequence,
+            sequence_three_letter: sourcePeptide['sequence_3'] || sourcePeptide['sequence_three_letter'] || '',
+            length: parseInt(sourcePeptide['length']) || cleanSequence.length,
+            molecular_weight: parseFloat(sourcePeptide['molecular_weight']) || 0,
+            molecular_formula: sourcePeptide['molecular_formula'] || '',
             
-            modifications: modTypes,
-            modifications_detail: modifications,
-            references: references,
-            experiments: experiments,
+            // Structural info
+            structure_type: sourcePeptide['conformation'] || sourcePeptide['structure_type'] || '',
+            disulfide_bridge: sourcePeptide['disulfide_bridge'] || '',
+            nature: sourcePeptide['nature'] || '',
+            
+            // Source
+            source_organism: sourcePeptide['origin'] || sourcePeptide['source_organism'] || '',
+            
+            // Related data
+            modifications: modificationTypes,
+            experiments: relatedExperiments,
+            references: relatedReferences,
             transport_types: transportTypes,
             
+            // Literature
             authors: primaryRef ? primaryRef['authors'] : '',
             title: primaryRef ? primaryRef['title'] : '',
             year: primaryRef ? primaryRef['year'] : '',
             journal: primaryRef ? primaryRef['journal'] : '',
             
-            notes: peptide['disulfide_bridge'] ? 'Disulfide bridges: ' + peptide['disulfide_bridge'] : '',
-            PDB: null
+            // Legacy
+            notes: sourcePeptide['disulfide_bridge'] ? 'Disulfide bridges: ' + sourcePeptide['disulfide_bridge'] : '',
+            PDB: null,
+            net_charge: null,
+            hydrophobicity: null
         };
         
-        enhancedPeptides.push(enhancedPeptide);
+        enhancedPeptides.push(enhanced);
     }
     
     peptidesData = enhancedPeptides;
-    filteredPeptides = [];
-    for (var i = 0; i < peptidesData.length; i++) {
-        filteredPeptides.push(peptidesData[i]);
-    }
+    filteredPeptides = [...peptidesData];
     
     console.log('Processed ' + peptidesData.length + ' peptides');
     
+    // Initialize appropriate page
     var currentPage = window.location.pathname.split('/').pop();
-    console.log('Current page:', currentPage);
-    
     if (currentPage === 'index.html' || currentPage === '') {
         initHomePage();
     } else if (currentPage === 'browse.html') {
@@ -295,18 +264,16 @@ function processAllData() {
 }
 
 // ========== CHART FUNCTIONS ==========
-
 function calculateAADistribution() {
     var aaCounts = {
         'A': 0, 'R': 0, 'N': 0, 'D': 0, 'C': 0, 'Q': 0, 'E': 0, 'G': 0,
         'H': 0, 'I': 0, 'L': 0, 'K': 0, 'M': 0, 'F': 0, 'P': 0, 'S': 0,
         'T': 0, 'W': 0, 'Y': 0, 'V': 0
     };
-    
     var totalAAs = 0;
     
     for (var p = 0; p < peptidesData.length; p++) {
-        var seq = peptidesData[p].sequence_one_letter || '';
+        var seq = peptidesData[p].sequence_clean || '';
         for (var i = 0; i < seq.length; i++) {
             var aa = seq[i];
             if (aaCounts[aa] !== undefined) {
@@ -316,12 +283,11 @@ function calculateAADistribution() {
         }
     }
     
-    var aaPercentages = {};
+    var result = {};
     for (var aa in aaCounts) {
-        aaPercentages[aa] = totalAAs > 0 ? (aaCounts[aa] / totalAAs * 100).toFixed(1) : 0;
+        result[aa] = totalAAs > 0 ? (aaCounts[aa] / totalAAs * 100).toFixed(1) : 0;
     }
-    
-    return aaPercentages;
+    return result;
 }
 
 function calculateLengthDistribution() {
@@ -330,155 +296,50 @@ function calculateLengthDistribution() {
         var l = peptidesData[p].length;
         if (l > 0) lengths.push(l);
     }
-    
     if (lengths.length === 0) return {};
     
-    var maxLength = lengths[0];
-    for (var i = 1; i < lengths.length; i++) {
-        if (lengths[i] > maxLength) maxLength = lengths[i];
-    }
-    
+    var maxLength = Math.max.apply(null, lengths);
     var binSize = 10;
     var bins = {};
     
     for (var i = 0; i <= maxLength + binSize; i += binSize) {
-        var binStart = i;
-        var binEnd = i + binSize;
-        var binLabel = binStart + '-' + binEnd;
-        bins[binLabel] = 0;
+        bins[i + '-' + (i + binSize)] = 0;
     }
     
     for (var i = 0; i < lengths.length; i++) {
-        var length = lengths[i];
-        var binIndex = Math.floor(length / binSize);
-        var binStart = binIndex * binSize;
-        var binLabel = binStart + '-' + (binStart + binSize);
-        bins[binLabel]++;
+        var len = lengths[i];
+        var binIndex = Math.floor(len / binSize) * binSize;
+        var label = binIndex + '-' + (binIndex + binSize);
+        if (bins[label] !== undefined) bins[label]++;
     }
     
-    var filteredBins = {};
+    var filtered = {};
     var hasData = false;
     for (var label in bins) {
         if (bins[label] > 0) hasData = true;
-        if (hasData || bins[label] > 0) {
-            filteredBins[label] = bins[label];
-        }
+        if (hasData || bins[label] > 0) filtered[label] = bins[label];
     }
-    
-    return filteredBins;
-}
-
-function calculateChargeDistribution() {
-    var charges = [];
-    for (var p = 0; p < peptidesData.length; p++) {
-        var c = peptidesData[p].net_charge;
-        if (c !== null && c !== '') charges.push(c);
-    }
-    
-    var chargeCounts = {};
-    for (var i = 0; i < charges.length; i++) {
-        var charge = charges[i];
-        var roundedCharge = Math.round(charge);
-        var key = roundedCharge >= 0 ? '+' + roundedCharge : '' + roundedCharge;
-        if (chargeCounts[key] === undefined) {
-            chargeCounts[key] = 0;
-        }
-        chargeCounts[key]++;
-    }
-    
-    var sortedKeys = Object.keys(chargeCounts).sort(function(a, b) {
-        var numA = parseInt(a) || 0;
-        var numB = parseInt(b) || 0;
-        return numA - numB;
-    });
-    
-    var sortedCounts = {};
-    for (var i = 0; i < sortedKeys.length; i++) {
-        var key = sortedKeys[i];
-        sortedCounts[key] = chargeCounts[key];
-    }
-    
-    return sortedCounts;
+    return filtered;
 }
 
 function createLengthChart() {
     var ctx = document.getElementById('lengthChart');
     if (!ctx || typeof Chart === 'undefined') return;
     
-    var distribution = calculateLengthDistribution();
-    var labels = Object.keys(distribution);
-    var data = Object.values(distribution);
-    
+    var dist = calculateLengthDistribution();
     if (lengthChart) lengthChart.destroy();
     
     lengthChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
-            datasets: [{
-                label: 'Number of Peptides',
-                data: data,
-                backgroundColor: 'rgba(66, 153, 225, 0.7)',
-                borderColor: 'rgba(66, 153, 225, 1)',
-                borderWidth: 1,
-                borderRadius: 4
-            }]
+            labels: Object.keys(dist),
+            datasets: [{ label: 'Number of Peptides', data: Object.values(dist), backgroundColor: 'rgba(66,153,225,0.7)', borderColor: 'rgba(66,153,225,1)', borderWidth: 1 }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } }
-            },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Count', font: { size: 10 } }, ticks: { stepSize: 1, font: { size: 9 } } },
-                x: { title: { display: true, text: 'Length (amino acids)', font: { size: 10 } }, ticks: { font: { size: 8 }, rotation: 45 } }
-            }
-        }
-    });
-}
-
-function createChargeChart() {
-    var ctx = document.getElementById('chargeChart');
-    if (!ctx || typeof Chart === 'undefined') return;
-    
-    var distribution = calculateChargeDistribution();
-    var labels = Object.keys(distribution);
-    var data = Object.values(distribution);
-    
-    if (chargeChart) chargeChart.destroy();
-    
-    var backgroundColors = [];
-    for (var i = 0; i < labels.length; i++) {
-        var val = parseInt(labels[i]);
-        if (val > 0) backgroundColors.push('rgba(66, 153, 225, 0.7)');
-        else if (val < 0) backgroundColors.push('rgba(245, 101, 101, 0.7)');
-        else backgroundColors.push('rgba(160, 174, 192, 0.7)');
-    }
-    
-    chargeChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Number of Peptides',
-                data: data,
-                backgroundColor: backgroundColors,
-                borderColor: backgroundColors.map(function(c) { return c.replace('0.7', '1'); }),
-                borderWidth: 1,
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } }
-            },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Count', font: { size: 10 } }, ticks: { stepSize: 1, font: { size: 9 } } },
-                x: { title: { display: true, text: 'Net Charge', font: { size: 10 } }, ticks: { font: { size: 9 } } }
-            }
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' }, ticks: { stepSize: 1 } }, x: { title: { display: true, text: 'Length (aa)' }, ticks: { rotation: 45 } } }
         }
     });
 }
@@ -487,48 +348,61 @@ function createAAChart() {
     var ctx = document.getElementById('aaChart');
     if (!ctx || typeof Chart === 'undefined') return;
     
-    var distribution = calculateAADistribution();
-    var labels = Object.keys(distribution);
-    var data = Object.values(distribution);
-    
+    var dist = calculateAADistribution();
     if (aaChart) aaChart.destroy();
-    
-    var colors = ['#4299e1', '#48bb78', '#ed8936', '#9f7aea', '#f56565', '#38b2ac', '#ecc94b', '#ed64a6', '#a0aec0', '#4a5568'];
     
     aaChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
-            datasets: [{
-                label: 'Frequency (%)',
-                data: data,
-                backgroundColor: colors,
-                borderColor: colors,
-                borderWidth: 1,
-                borderRadius: 4
-            }]
+            labels: Object.keys(dist),
+            datasets: [{ label: 'Frequency (%)', data: Object.values(dist), backgroundColor: '#4299e1', borderColor: '#2c5282', borderWidth: 1 }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: {
-                legend: { position: 'top', labels: { font: { size: 10 } } }
-            },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Frequency (%)', font: { size: 10 } }, ticks: { font: { size: 9 } } },
-                x: { title: { display: true, text: 'Amino Acid', font: { size: 10 } }, ticks: { font: { size: 9 }, weight: 'bold' } }
-            }
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Frequency (%)' } }, x: { title: { display: true, text: 'Amino Acid' } } }
+        }
+    });
+}
+
+function createChargeChart() {
+    var ctx = document.getElementById('chargeChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    
+    var charges = [];
+    for (var p = 0; p < peptidesData.length; p++) {
+        var c = peptidesData[p].net_charge;
+        if (c !== null && c !== '') charges.push(Math.round(c));
+    }
+    
+    var counts = {};
+    for (var i = 0; i < charges.length; i++) {
+        var key = charges[i] >= 0 ? '+' + charges[i] : '' + charges[i];
+        counts[key] = (counts[key] || 0) + 1;
+    }
+    
+    if (chargeChart) chargeChart.destroy();
+    
+    chargeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(counts),
+            datasets: [{ label: 'Number of Peptides', data: Object.values(counts), backgroundColor: 'rgba(66,153,225,0.7)', borderColor: 'rgba(66,153,225,1)', borderWidth: 1 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' }, ticks: { stepSize: 1 } }, x: { title: { display: true, text: 'Net Charge' } } }
         }
     });
 }
 
 // ========== HOME PAGE ==========
-
 function initHomePage() {
-    console.log('Initializing home page');
     updateHomeStats();
     displayFeaturedPeptides();
-    
     setTimeout(function() {
         if (peptidesData.length > 0 && typeof Chart !== 'undefined') {
             createLengthChart();
@@ -543,79 +417,44 @@ function updateHomeStats() {
     if (total === 0) return;
     
     var sumLength = 0;
-    var sumCharge = 0;
-    var chargeCount = 0;
-    for (var i = 0; i < peptidesData.length; i++) {
-        sumLength += peptidesData[i].length;
-        if (peptidesData[i].net_charge !== null) {
-            sumCharge += parseFloat(peptidesData[i].net_charge) || 0;
-            chargeCount++;
-        }
-    }
-    
+    for (var i = 0; i < peptidesData.length; i++) sumLength += peptidesData[i].length;
     var avgLength = sumLength / total;
-    var avgCharge = chargeCount > 0 ? sumCharge / chargeCount : 0;
     
     var totalEl = document.getElementById('totalPeptides');
     var avgLengthEl = document.getElementById('avgLength');
-    var avgChargeEl = document.getElementById('avgCharge');
-    
     if (totalEl) totalEl.textContent = total;
     if (avgLengthEl) avgLengthEl.textContent = avgLength.toFixed(1);
-    if (avgChargeEl) avgChargeEl.textContent = avgCharge.toFixed(1);
 }
 
 function displayFeaturedPeptides() {
     var container = document.getElementById('featuredPeptides');
     if (!container) return;
     
-    var featured = [];
-    for (var i = 0; i < Math.min(peptidesData.length, 6); i++) {
-        featured.push(peptidesData[i]);
-    }
-    
+    var featured = peptidesData.slice(0, 6);
     if (featured.length === 0) {
-        container.innerHTML = '<div class="loading">No peptides found in database</div>';
+        container.innerHTML = '<div class="loading">No peptides found</div>';
         return;
     }
     
     var html = '';
     for (var i = 0; i < featured.length; i++) {
-        var peptide = featured[i];
-        var peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
-        
-        html += '<div class="peptide-card" onclick="window.location.href=\'' + peptideUrl + '\'" style="cursor: pointer;">' +
-            '<div class="card-header">' +
-                '<h3 style="color: #2c5282;">' + (peptide.peptide_name || 'Unnamed Peptide') + '</h3>' +
-            '</div>' +
+        var p = featured[i];
+        var url = getPeptideUrl(p.id, p.peptide_name);
+        html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
+            '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + '</h3></div>' +
             '<div class="card-content">' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Source:</div>' +
-                    '<div class="card-value">' + (peptide.source_organism || 'N/A') + '</div>' +
-                '</div>' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Length / MW:</div>' +
-                    '<div class="card-value">' + (peptide.length || 'N/A') + ' aa / ' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(1) : 'N/A') + ' Da</div>' +
-                '</div>' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Structure:</div>' +
-                    '<div class="card-value">' + (peptide.structure_type || 'N/A') + '</div>' +
-                '</div>' +
+                '<div class="card-row"><div class="card-label">Source:</div><div class="card-value">' + (p.source_organism || 'N/A') + '</div></div>' +
+                '<div class="card-row"><div class="card-label">Length:</div><div class="card-value">' + (p.length || 'N/A') + ' aa</div></div>' +
+                '<div class="card-row"><div class="card-label">MW:</div><div class="card-value">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + ' Da</div></div>' +
             '</div>' +
         '</div>';
     }
-    
     container.innerHTML = html;
 }
 
 // ========== BROWSE PAGE ==========
-
 function initBrowsePage() {
-    console.log('Initializing browse page');
-    filteredPeptides = [];
-    for (var i = 0; i < peptidesData.length; i++) {
-        filteredPeptides.push(peptidesData[i]);
-    }
+    filteredPeptides = [...peptidesData];
     updateBrowseStats();
     displayBrowseResults();
     setupBrowseEventListeners();
@@ -623,35 +462,27 @@ function initBrowsePage() {
 }
 
 function setupBrowseEventListeners() {
-    var searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                applyAllFilters();
-            }
-        });
-    }
+    var input = document.getElementById('searchInput');
+    if (input) input.addEventListener('keypress', function(e) { if (e.key === 'Enter') applyFilters(); });
 }
 
 function updateBrowseStats() {
-    var count = filteredPeptides.length;
-    var countElement = document.getElementById('resultsCount');
-    if (countElement) countElement.textContent = 'Found peptides: ' + count;
+    var el = document.getElementById('resultsCount');
+    if (el) el.textContent = 'Found peptides: ' + filteredPeptides.length;
 }
 
 function initAASelector() {
-    var buttons = document.querySelectorAll('.aa-btn-compact');
-    for (var i = 0; i < buttons.length; i++) {
-        var btn = buttons[i];
-        btn.addEventListener('click', function() {
+    var btns = document.querySelectorAll('.aa-btn-compact');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function() {
             var aa = this.getAttribute('data-aa');
             if (this.classList.contains('selected')) {
                 this.classList.remove('selected');
-                var newSelected = [];
+                var newSel = [];
                 for (var j = 0; j < selectedAAs.length; j++) {
-                    if (selectedAAs[j] !== aa) newSelected.push(selectedAAs[j]);
+                    if (selectedAAs[j] !== aa) newSel.push(selectedAAs[j]);
                 }
-                selectedAAs = newSelected;
+                selectedAAs = newSel;
             } else {
                 this.classList.add('selected');
                 selectedAAs.push(aa);
@@ -660,182 +491,82 @@ function initAASelector() {
     }
 }
 
-function containsAllAAs(sequence, requiredAAs) {
-    if (!requiredAAs || requiredAAs.length === 0) return true;
-    for (var i = 0; i < requiredAAs.length; i++) {
-        if (sequence.indexOf(requiredAAs[i]) === -1) return false;
+function containsAllAAs(seq, required) {
+    if (!required || required.length === 0) return true;
+    for (var i = 0; i < required.length; i++) {
+        if (seq.indexOf(required[i]) === -1) return false;
     }
     return true;
 }
 
 function checkModification(peptide, modType) {
-    var notes = (peptide.notes || '').toLowerCase();
-    var name = (peptide.peptide_name || '').toLowerCase();
-    var sequence = (peptide.sequence_one_letter || '').toLowerCase();
     var mods = peptide.modifications || [];
-    
-    switch(modType) {
-        case 'amidation': 
-            if (notes.indexOf('amid') !== -1) return true;
-            if (name.indexOf('amid') !== -1) return true;
-            if (sequence.indexOf('nh2') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('amid') !== -1) return true;
-            }
-            return false;
-        case 'acylation': 
-            if (notes.indexOf('acyl') !== -1) return true;
-            if (name.indexOf('acyl') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('acyl') !== -1) return true;
-            }
-            return false;
-        case 'cyclization': 
-            if (notes.indexOf('cycl') !== -1) return true;
-            if (notes.indexOf('cyclic') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('cycl') !== -1) return true;
-            }
-            return false;
-        case 'glycosylation': 
-            if (notes.indexOf('glyco') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('glyco') !== -1) return true;
-            }
-            return false;
-        case 'phosphorylation': 
-            if (notes.indexOf('phospho') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('phospho') !== -1) return true;
-            }
-            return false;
-        case 'methylated': 
-            if (notes.indexOf('methyl') !== -1) return true;
-            if (sequence.indexOf('me') !== -1) return true;
-            if (sequence.indexOf('nme') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('methyl') !== -1) return true;
-            }
-            return false;
-        case 'acetylated': 
-            if (notes.indexOf('acetyl') !== -1) return true;
-            if (sequence.indexOf('ac') !== -1) return true;
-            for (var i = 0; i < mods.length; i++) {
-                if (mods[i].toLowerCase().indexOf('acetyl') !== -1) return true;
-            }
-            return false;
-        default: 
-            return true;
+    for (var i = 0; i < mods.length; i++) {
+        var m = mods[i].toLowerCase();
+        if (modType === 'amidation' && (m.indexOf('amid') !== -1 || m.indexOf('nh2') !== -1)) return true;
+        if (modType === 'acylation' && m.indexOf('acyl') !== -1) return true;
+        if (modType === 'cyclization' && (m.indexOf('cycl') !== -1 || m.indexOf('cyclic') !== -1)) return true;
+        if (modType === 'glycosylation' && m.indexOf('glyco') !== -1) return true;
+        if (modType === 'phosphorylation' && m.indexOf('phospho') !== -1) return true;
+        if (modType === 'methylated' && (m.indexOf('methyl') !== -1 || m.indexOf('me') !== -1)) return true;
+        if (modType === 'acetylated' && (m.indexOf('acetyl') !== -1 || m.indexOf('ac') !== -1)) return true;
     }
+    return false;
 }
 
-function applyAllFilters() {
-    var searchInput = document.getElementById('searchInput');
-    var structureFilter = document.getElementById('structureFilter');
-    var lengthMin = document.getElementById('lengthMin');
-    var lengthMax = document.getElementById('lengthMax');
-    var modFilter = document.getElementById('modFilter');
+function applyFilters() {
+    var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
+    var structType = document.getElementById('structureFilter') ? document.getElementById('structureFilter').value : 'all';
+    var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
+    var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
+    var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
     
-    var searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-    var structureType = structureFilter ? structureFilter.value : 'all';
-    var minLen = (lengthMin ? parseInt(lengthMin.value) : 0) || 0;
-    var maxLen = (lengthMax ? parseInt(lengthMax.value) : 100) || 1000;
-    var modType = modFilter ? modFilter.value : 'all';
-    
-    var tempFiltered = [];
+    var result = [];
     for (var i = 0; i < peptidesData.length; i++) {
-        tempFiltered.push(peptidesData[i]);
-    }
-    
-    // Search filter
-    if (searchTerm) {
-        var newFiltered = [];
-        for (var i = 0; i < tempFiltered.length; i++) {
-            var p = tempFiltered[i];
+        var p = peptidesData[i];
+        
+        // Search filter
+        if (searchTerm) {
             var inName = p.peptide_name && p.peptide_name.toLowerCase().indexOf(searchTerm) !== -1;
             var inSeq = p.sequence_one_letter && p.sequence_one_letter.toLowerCase().indexOf(searchTerm) !== -1;
             var inSource = p.source_organism && p.source_organism.toLowerCase().indexOf(searchTerm) !== -1;
-            if (inName || inSeq || inSource) {
-                newFiltered.push(p);
-            }
+            if (!inName && !inSeq && !inSource) continue;
         }
-        tempFiltered = newFiltered;
+        
+        // Length filter
+        if (p.length < minLen || p.length > maxLen) continue;
+        
+        // Structure filter
+        if (structType !== 'all' && (p.structure_type || '').toLowerCase() !== structType.toLowerCase()) continue;
+        
+        // Amino acid filter
+        if (selectedAAs.length > 0 && !containsAllAAs(p.sequence_clean || '', selectedAAs)) continue;
+        
+        // Modification filter
+        if (modType !== 'all' && !checkModification(p, modType)) continue;
+        
+        result.push(p);
     }
     
-    // Length filter
-    var lengthFiltered = [];
-    for (var i = 0; i < tempFiltered.length; i++) {
-        var p = tempFiltered[i];
-        if (p.length >= minLen && p.length <= maxLen) {
-            lengthFiltered.push(p);
-        }
-    }
-    tempFiltered = lengthFiltered;
-    
-    // Structure filter
-    if (structureType !== 'all') {
-        var structFiltered = [];
-        for (var i = 0; i < tempFiltered.length; i++) {
-            var p = tempFiltered[i];
-            if ((p.structure_type || '').toLowerCase() === structureType.toLowerCase()) {
-                structFiltered.push(p);
-            }
-        }
-        tempFiltered = structFiltered;
-    }
-    
-    // Amino acid filter
-    if (selectedAAs.length > 0) {
-        var aaFiltered = [];
-        for (var i = 0; i < tempFiltered.length; i++) {
-            var p = tempFiltered[i];
-            if (containsAllAAs(p.sequence_one_letter || '', selectedAAs)) {
-                aaFiltered.push(p);
-            }
-        }
-        tempFiltered = aaFiltered;
-    }
-    
-    // Modification filter
-    if (modType !== 'all') {
-        var modFiltered = [];
-        for (var i = 0; i < tempFiltered.length; i++) {
-            var p = tempFiltered[i];
-            if (checkModification(p, modType)) {
-                modFiltered.push(p);
-            }
-        }
-        tempFiltered = modFiltered;
-    }
-    
-    filteredPeptides = tempFiltered;
+    filteredPeptides = result;
     updateBrowseStats();
     displayBrowseResults();
 }
 
-function resetAllFilters() {
-    var searchInput = document.getElementById('searchInput');
-    var lengthMin = document.getElementById('lengthMin');
-    var lengthMax = document.getElementById('lengthMax');
-    var structureFilter = document.getElementById('structureFilter');
-    var modFilter = document.getElementById('modFilter');
-    
-    if (searchInput) searchInput.value = '';
-    if (lengthMin) lengthMin.value = 0;
-    if (lengthMax) lengthMax.value = 100;
-    if (structureFilter) structureFilter.value = 'all';
-    if (modFilter) modFilter.value = 'all';
+function resetFilters() {
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'structureFilter', 'modFilter'];
+    for (var i = 0; i < inputs.length; i++) {
+        var el = document.getElementById(inputs[i]);
+        if (el) el.value = (inputs[i] === 'lengthMin' ? 0 : (inputs[i] === 'lengthMax' ? 100 : ''));
+    }
+    if (document.getElementById('structureFilter')) document.getElementById('structureFilter').value = 'all';
+    if (document.getElementById('modFilter')) document.getElementById('modFilter').value = 'all';
     
     selectedAAs = [];
     var btns = document.querySelectorAll('.aa-btn-compact');
-    for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.remove('selected');
-    }
+    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('selected');
     
-    filteredPeptides = [];
-    for (var i = 0; i < peptidesData.length; i++) {
-        filteredPeptides.push(peptidesData[i]);
-    }
+    filteredPeptides = [...peptidesData];
     updateBrowseStats();
     displayBrowseResults();
 }
@@ -846,145 +577,88 @@ function downloadResults() {
         return;
     }
     
-    var headers = ['ID', 'Peptide Name', 'Sequence', 'Length', 'MW (Da)', 'Molecular Formula', 'Structure Type', 'Source Organism', 'Disulfide Bridges', 'Modifications', 'Transport Types'];
-    
+    var headers = ['ID', 'Name', 'Sequence', 'Length', 'MW (Da)', 'Formula', 'Structure', 'Source', 'Disulfide', 'Modifications'];
     var rows = [];
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
-        rows.push([
-            p.id || '',
-            p.peptide_name || '',
-            p.sequence_one_letter || '',
-            p.length || '',
-            p.molecular_weight || '',
-            p.molecular_formula || '',
-            p.structure_type || '',
-            p.source_organism || '',
-            p.disulfide_bridge || '',
-            (p.modifications || []).join('; '),
-            (p.transport_types || []).join('; ')
-        ]);
+        rows.push([p.id, p.peptide_name, p.sequence_one_letter, p.length, p.molecular_weight, p.molecular_formula, p.structure_type, p.source_organism, p.disulfide_bridge, (p.modifications || []).join('; ')]);
     }
     
-    var csvContent = '';
-    for (var i = 0; i < headers.length; i++) {
-        csvContent += (i > 0 ? ',' : '') + '"' + headers[i] + '"';
-    }
-    csvContent += '\n';
-    
+    var csv = headers.join(',') + '\n';
     for (var i = 0; i < rows.length; i++) {
+        var row = [];
         for (var j = 0; j < rows[i].length; j++) {
-            csvContent += (j > 0 ? ',' : '') + '"' + String(rows[i][j]).replace(/"/g, '""') + '"';
+            row.push('"' + String(rows[i][j] || '').replace(/"/g, '""') + '"');
         }
-        csvContent += '\n';
+        csv += row.join(',') + '\n';
     }
     
-    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var blob = new Blob([csv], { type: 'text/csv' });
     var link = document.createElement('a');
-    var url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'barrpeps_results_' + new Date().toISOString().slice(0,19).replace(/:/g, '-') + '.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    link.href = URL.createObjectURL(blob);
+    link.download = 'barrpeps_export.csv';
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(link.href);
 }
 
 function displayBrowseResults() {
     var container = document.getElementById('resultsContainer');
     if (!container) return;
     
-    var count = filteredPeptides.length;
-    
-    if (count === 0) {
-        container.innerHTML = '<div style="text-align: center; padding: 2rem;">No peptides found</div>';
+    if (filteredPeptides.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:2rem;">No peptides found</div>';
         return;
     }
     
-    if (currentView === 'table') {
-        displayTableView(container);
-    } else {
-        displayCardBrowseView(container);
-    }
+    if (currentView === 'table') displayTableView(container);
+    else displayCardView(container);
 }
 
 function displayTableView(container) {
-    var html = '<div class="table-view">' +
-        '<tr>' +
-            '<thead>' +
-                <tr>' +
-                    '<th onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th onclick="sortBy(\'length\')">Length</th>' +
-                    '<th onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th onclick="sortBy(\'structure_type\')">Structure</th>' +
-                    '<th onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th>Details</th>' +
-                 '</tr>' +
-            '</thead>' +
-            '<tbody>';
+    var html = '<div class="table-view"><table><thead><tr>' +
+        '<th onclick="sortBy(\'peptide_name\')">Name</th>' +
+        '<th onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+        '<th onclick="sortBy(\'length\')">Length</th>' +
+        '<th onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+        '<th onclick="sortBy(\'structure_type\')">Structure</th>' +
+        '<th onclick="sortBy(\'source_organism\')">Source</th>' +
+        '<th>Details</th>' +
+        '</tr></thead><tbody>';
     
     for (var i = 0; i < filteredPeptides.length; i++) {
-        var peptide = filteredPeptides[i];
-        var sequenceDisplay = peptide.sequence_one_letter ? 
-            (peptide.sequence_one_letter.length > 30 ? 
-                peptide.sequence_one_letter.substring(0, 30) + '...' : 
-                peptide.sequence_one_letter) : 'N/A';
-        
-        var peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
-        
+        var p = filteredPeptides[i];
+        var seqShort = p.sequence_one_letter ? (p.sequence_one_letter.length > 30 ? p.sequence_one_letter.substring(0,30) + '...' : p.sequence_one_letter) : 'N/A';
+        var url = getPeptideUrl(p.id, p.peptide_name);
         html += '<tr>' +
-            '<td style="padding: 0.7rem 0.5rem;">' +
-                '<a href="' + peptideUrl + '" style="text-decoration: none; color: #2c5282; font-weight: bold;">' + (peptide.peptide_name || 'N/A') + '</a>' +
-            '</td>' +
-            '<td style="font-family: monospace; font-size: 0.65rem;">' + sequenceDisplay + '</td>' +
-            '<td>' + (peptide.length || 'N/A') + '</td>' +
-            '<td>' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
-            '<td>' + (peptide.structure_type || 'N/A') + '</td>' +
-            '<td>' + (peptide.source_organism || 'N/A') + '</td>' +
-            '<td><a href="' + peptideUrl + '" class="btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.65rem; text-decoration: none;">View</a></td>' +
-        '</tr>';
+            '<td><a href="' + url + '" style="color:#2c5282;font-weight:bold;">' + (p.peptide_name || 'N/A') + '</a></td>' +
+            '<td style="font-family:monospace;font-size:0.65rem;">' + seqShort + '</td>' +
+            '<td>' + (p.length || 'N/A') + '</td>' +
+            '<td>' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
+            '<td>' + (p.structure_type || 'N/A') + '</td>' +
+            '<td>' + (p.source_organism || 'N/A') + '</td>' +
+            '<td><a href="' + url + '" class="btn-primary" style="padding:0.25rem 0.6rem;font-size:0.65rem;">View</a></td>' +
+            '</tr>';
     }
-    
-    html += '</tbody>' +
-        '</table>' +
-    '</div>';
+    html += '</tbody></table></div>';
     container.innerHTML = html;
 }
 
-function displayCardBrowseView(container) {
+function displayCardView(container) {
     var html = '<div class="peptide-grid">';
-    
     for (var i = 0; i < filteredPeptides.length; i++) {
-        var peptide = filteredPeptides[i];
-        var peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
-        
-        html += '<div class="peptide-card" onclick="window.location.href=\'' + peptideUrl + '\'" style="cursor: pointer;">' +
-            '<div class="card-header">' +
-                '<h3 style="color: #2c5282;">' + (peptide.peptide_name || 'Unnamed Peptide') + '</h3>' +
-            '</div>' +
+        var p = filteredPeptides[i];
+        var url = getPeptideUrl(p.id, p.peptide_name);
+        html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
+            '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + '</h3></div>' +
             '<div class="card-content">' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Source:</div>' +
-                    '<div class="card-value">' + (peptide.source_organism || 'N/A') + '</div>' +
-                '</div>' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Length / MW:</div>' +
-                    '<div class="card-value">' + (peptide.length || 'N/A') + ' aa / ' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(1) : 'N/A') + ' Da</div>' +
-                '</div>' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Structure:</div>' +
-                    '<div class="card-value">' + (peptide.structure_type || 'N/A') + '</div>' +
-                '</div>' +
-                '<div class="card-row">' +
-                    '<div class="card-label">Sequence:</div>' +
-                    '<div class="card-value" style="font-family: monospace; font-size: 0.65rem; word-break: break-all;">' + (peptide.sequence_one_letter || 'N/A') + '</div>' +
-                '</div>' +
+                '<div class="card-row"><div class="card-label">Source:</div><div class="card-value">' + (p.source_organism || 'N/A') + '</div></div>' +
+                '<div class="card-row"><div class="card-label">Length:</div><div class="card-value">' + (p.length || 'N/A') + ' aa</div></div>' +
+                '<div class="card-row"><div class="card-label">MW:</div><div class="card-value">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + ' Da</div></div>' +
+                '<div class="card-row"><div class="card-label">Structure:</div><div class="card-value">' + (p.structure_type || 'N/A') + '</div></div>' +
+                '<div class="card-row"><div class="card-label">Sequence:</div><div class="card-value" style="font-family:monospace;font-size:0.65rem;">' + (p.sequence_one_letter || 'N/A') + '</div></div>' +
             '</div>' +
         '</div>';
     }
-    
     html += '</div>';
     container.innerHTML = html;
 }
@@ -992,50 +666,31 @@ function displayCardBrowseView(container) {
 function setView(view) {
     currentView = view;
     var btns = document.querySelectorAll('.toggle-btn');
-    for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.remove('active');
-    }
-    if (view === 'table') {
-        if (btns[0]) btns[0].classList.add('active');
-    } else {
-        if (btns[1]) btns[1].classList.add('active');
-    }
+    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+    if (view === 'table' && btns[0]) btns[0].classList.add('active');
+    else if (view === 'card' && btns[1]) btns[1].classList.add('active');
     displayBrowseResults();
 }
 
 function sortBy(column) {
-    if (sortColumn === column) {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortColumn = column;
-        sortDirection = 'asc';
-    }
+    if (sortColumn === column) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    else { sortColumn = column; sortDirection = 'asc'; }
     
     filteredPeptides.sort(function(a, b) {
         var valA = a[column];
         var valB = b[column];
-        
         if (valA === undefined || valA === null || valA === '') valA = -Infinity;
         if (valB === undefined || valB === null || valB === '') valB = -Infinity;
-        
-        if (typeof valA === 'string') {
-            valA = valA.toLowerCase();
-            valB = valB.toLowerCase();
-        }
-        
+        if (typeof valA === 'string') { valA = valA.toLowerCase(); valB = valB.toLowerCase(); }
         if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
         if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
         return 0;
     });
-    
     displayBrowseResults();
 }
 
 // ========== PEPTIDE DETAIL PAGE ==========
-
 function initPeptidePage() {
-    console.log('Initializing peptide page');
-    
     var urlParams = new URLSearchParams(window.location.search);
     var peptideId = parseInt(urlParams.get('id'));
     
@@ -1048,81 +703,24 @@ function initPeptidePage() {
     }
     
     if (!peptide) {
-        var detailContainer = document.getElementById('peptideDetail');
-        if (detailContainer) {
-            detailContainer.innerHTML = '<div class="error-message">' +
-                '<p>Peptide not found</p>' +
-                '<a href="browse.html" class="btn-primary">Browse Database</a>' +
-                '</div>';
-        }
+        document.getElementById('peptideDetail').innerHTML = '<div class="error-message">Peptide not found<br><a href="browse.html" class="btn-primary">Browse Database</a></div>';
         return;
     }
     
-    document.title = peptide.peptide_name + ' - BarrPeps Database';
+    document.title = peptide.peptide_name + ' - BarrPeps';
     displayPeptideDetail(peptide);
 }
 
-function formatReferenceList(references) {
-    if (!references || references.length === 0) return 'N/A';
-    
-    var result = '';
-    for (var i = 0; i < references.length; i++) {
-        var ref = references[i];
-        var authors = ref['authors'] || '';
-        var year = ref['year'] || '';
-        var journal = ref['journal'] || '';
-        var title = ref['title'] || '';
-        
-        if (authors && year && journal) {
-            result += authors + ' (' + year + '). ' + title + '. ' + journal + '.';
-        } else if (authors && year) {
-            result += authors + ' (' + year + '). ' + (title || '');
-        } else {
-            result += title || 'Reference';
-        }
-        if (i < references.length - 1) result += '<br><br>';
-    }
-    return result;
-}
-
-function formatExperiments(experiments) {
-    if (!experiments || experiments.length === 0) return 'N/A';
-    
-    var uniqueExperiments = [];
-    var seen = {};
-    
-    for (var i = 0; i < experiments.length; i++) {
-        var exp = experiments[i];
-        var key = exp['method'] + '_' + exp['response'] + '_' + exp['result'];
-        if (!seen[key]) {
-            seen[key] = true;
-            uniqueExperiments.push(exp);
-        }
-    }
-    
-    var result = '';
-    var limit = Math.min(uniqueExperiments.length, 10);
-    for (var i = 0; i < limit; i++) {
-        var exp = uniqueExperiments[i];
-        var method = exp['method'] || 'N/A';
-        var response = exp['response'] || 'N/A';
-        var resultVal = exp['result'] || 'N/A';
-        var unit = exp['unit'] || '';
-        var transportType = exp['transport_type'] || '';
-        
-        var text = '<strong>' + method + '</strong>: ' + response + ' = ' + resultVal + ' ' + unit;
-        if (transportType) text += ' (' + transportType + ')';
-        result += text;
-        if (i < limit - 1) result += '<br>';
-    }
-    return result;
+function formatSequenceWithMods(seq) {
+    if (!seq) return 'N/A';
+    return seq
+        .replace(/\(Me2\)/g, '<span class="modification" title="Dimethylated">(Me₂)</span>')
+        .replace(/\(D\)/g, '<span class="modification" title="D-amino acid">(D)</span>')
+        .replace(/\(NMe\)/g, '<span class="modification" title="N-methylated">(N-Me)</span>')
+        .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH₂</span>');
 }
 
 function displayPeptideDetail(peptide) {
-    var formattedSequence = formatSequenceWithModifications(peptide.sequence_one_letter);
-    var refsHtml = formatReferenceList(peptide.references);
-    var experimentsHtml = formatExperiments(peptide.experiments);
-    
     var modsHtml = 'N/A';
     if (peptide.modifications && peptide.modifications.length > 0) {
         var mods = '';
@@ -1134,82 +732,61 @@ function displayPeptideDetail(peptide) {
     }
     
     var html = '<div class="peptide-detail-container">' +
-        '<div style="margin-bottom: 1rem;">' +
-            '<a href="browse.html" class="btn-secondary back-button" style="display: inline-block; text-decoration: none;">← Back to Browse</a>' +
-            '<h1 style="color: #2c5282; font-size: 1.4rem; margin-bottom: 0.2rem;">' + (peptide.peptide_name || 'N/A') + '</h1>' +
-            '<p style="color: #718096; font-size: 0.7rem;">ID: ' + peptide.id + '</p>' +
-        '</div>' +
+        '<div style="margin-bottom:1rem;"><a href="browse.html" class="btn-secondary back-button">← Back to Browse</a>' +
+        '<h1 style="color:#2c5282;">' + (peptide.peptide_name || 'N/A') + '</h1>' +
+        '<p style="color:#718096;">ID: ' + peptide.id + '</p></div>' +
         
-        '<div class="detail-section">' +
-            '<h3>Basic Information</h3>' +
-            '<div class="detail-row"><span class="detail-label">Peptide Name:</span><span class="detail-value">' + (peptide.peptide_name || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Sequence (1-letter):</span><span class="detail-value" style="font-family: monospace; font-size: 0.8rem; word-break: break-all;">' + formattedSequence + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Sequence (3-letter):</span><span class="detail-value" style="font-size: 0.7rem; word-break: break-all;">' + (peptide.sequence_three_letter || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">' + (peptide.length || 'N/A') + ' aa</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Molecular Weight:</span><span class="detail-value">' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(2) : 'N/A') + ' Da</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Molecular Formula:</span><span class="detail-value">' + (peptide.molecular_formula || 'N/A') + '</span></div>' +
-        '</div>' +
+        '<div class="detail-section"><h3>Basic Information</h3>' +
+        '<div class="detail-row"><span class="detail-label">Name:</span><span class="detail-value">' + (peptide.peptide_name || 'N/A') + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">' + (peptide.length || 'N/A') + ' aa</span></div>' +
+        '<div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(2) : 'N/A') + ' Da</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">' + (peptide.molecular_formula || 'N/A') + '</span></div></div>' +
         
-        '<div class="detail-section">' +
-            '<h3>Structural Properties</h3>' +
-            '<div class="detail-row"><span class="detail-label">Structure Type:</span><span class="detail-value">' + (peptide.structure_type || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Disulfide Bridges:</span><span class="detail-value">' + (peptide.disulfide_bridge || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Nature:</span><span class="detail-value">' + (peptide.nature || 'N/A') + '</span></div>' +
-            '<div class="detail-row"><span class="detail-label">Modifications:</span><span class="detail-value">' + modsHtml + '</span></div>' +
-        '</div>' +
+        '<div class="detail-section"><h3>Structural Properties</h3>' +
+        '<div class="detail-row"><span class="detail-label">Structure:</span><span class="detail-value">' + (peptide.structure_type || 'N/A') + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Disulfide:</span><span class="detail-value">' + (peptide.disulfide_bridge || 'N/A') + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Modifications:</span><span class="detail-value">' + modsHtml + '</span></div></div>' +
         
-        '<div class="detail-section">' +
-            '<h3>Biological Source</h3>' +
-            '<div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">' + (peptide.source_organism || 'N/A') + '</span></div>' +
-        '</div>';
+        '<div class="detail-section"><h3>Source</h3>' +
+        '<div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">' + (peptide.source_organism || 'N/A') + '</span></div></div>';
     
     if (peptide.transport_types && peptide.transport_types.length > 0) {
-        html += '<div class="detail-section">' +
-            '<h3>Transport Properties</h3>' +
-            '<div class="detail-row"><span class="detail-label">Transport Types:</span><span class="detail-value">' + peptide.transport_types.join(', ') + '</span></div>' +
-        '</div>';
+        html += '<div class="detail-section"><h3>Transport</h3>' +
+            '<div class="detail-row"><span class="detail-label">Types:</span><span class="detail-value">' + peptide.transport_types.join(', ') + '</span></div></div>';
     }
     
-    if (experimentsHtml !== 'N/A') {
-        html += '<div class="detail-section">' +
-            '<h3>Experimental Data</h3>' +
-            '<div class="detail-row"><span class="detail-label">Experiments:</span><span class="detail-value" style="font-size: 0.8rem;">' + experimentsHtml + '</span></div>' +
-        '</div>';
+    if (peptide.references && peptide.references.length > 0) {
+        var refs = '';
+        for (var i = 0; i < peptide.references.length; i++) {
+            var r = peptide.references[i];
+            refs += (r['authors'] || '') + ' (' + (r['year'] || '') + '). ' + (r['title'] || '') + '. ' + (r['journal'] || '') + '<br><br>';
+        }
+        html += '<div class="detail-section"><h3>References</h3><div class="detail-row"><span class="detail-value">' + refs + '</span></div></div>';
     }
     
-    if (refsHtml !== 'N/A') {
-        html += '<div class="detail-section">' +
-            '<h3>References</h3>' +
-            '<div class="detail-row"><span class="detail-label">Literature:</span><span class="detail-value" style="font-size: 0.8rem;">' + refsHtml + '</span></div>' +
-        '</div>';
-    }
-    
-    html += '<div class="detail-section">' +
-            '<h3>Additional Information</h3>' +
-            '<div class="detail-row"><span class="detail-label">Notes:</span><span class="detail-value">' + (peptide.notes || 'N/A') + '</span></div>' +
-        '</div>' +
-    '</div>';
-    
-    var detailContainer = document.getElementById('peptideDetail');
-    if (detailContainer) {
-        detailContainer.innerHTML = html;
-    }
+    html += '</div>';
+    document.getElementById('peptideDetail').innerHTML = html;
 }
 
-// ========== INITIALIZATION ==========
-
-window.searchPeptides = applyAllFilters;
-window.resetFilters = resetAllFilters;
+// ========== EXPORTS ==========
+window.searchPeptides = applyFilters;
+window.resetFilters = resetFilters;
 window.setView = setView;
 window.sortBy = sortBy;
+window.applyAllFilters = applyFilters;
+window.resetAllFilters = resetFilters;
+window.downloadResults = downloadResults;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
-window.applyAllFilters = applyAllFilters;
-window.resetAllFilters = resetAllFilters;
-window.downloadResults = downloadResults;
 
-// Start loading
+// Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, starting data load...');
-    setTimeout(loadExcelData, 200);
+    console.log('DOM ready, loading Excel...');
+    if (typeof XLSX !== 'undefined') {
+        loadExcelFile();
+    } else {
+        console.error('XLSX library not loaded');
+        showError('XLSX library not loaded. Please check your internet connection.');
+    }
 });
