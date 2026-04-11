@@ -91,6 +91,29 @@ function useFallbackData() {
     processAllData();
 }
 
+// Simplify modification types
+function simplifyModification(modStr) {
+    if (!modStr) return null;
+    var lower = modStr.toLowerCase();
+    
+    if (lower.includes('conjugated') || lower.includes('conjugate')) return 'Conjugated';
+    if (lower.includes('amidated') || lower.includes('amidation') || lower.includes('-nh2')) return 'Amidated';
+    if (lower.includes('acetylated') || lower.includes('acetyl')) return 'Acetylated';
+    if (lower.includes('methylated') || lower.includes('methyl')) return 'Methylated';
+    if (lower.includes('glycosylated') || lower.includes('glyco')) return 'Glycosylated';
+    if (lower.includes('phosphorylated') || lower.includes('phospho')) return 'Phosphorylated';
+    if (lower.includes('cyclized') || lower.includes('cyclic')) return 'Cyclized';
+    if (lower.includes('lipidated') || lower.includes('lipid')) return 'Lipidated';
+    if (lower.includes('myristoylated')) return 'Myristoylated';
+    if (lower.includes('peg')) return 'PEGylated';
+    if (lower.includes('biotin')) return 'Biotinylated';
+    if (lower.includes('fluorescent')) return 'Fluorescent';
+    if (lower.includes('toxin')) return 'Toxin conjugated';
+    if (lower.includes('drug')) return 'Drug conjugated';
+    
+    return null;
+}
+
 function processAllData() {
     // Build maps for related data
     var experimentsMap = {};
@@ -132,15 +155,24 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        // Collect unique modifications (no duplicates)
+        // Collect unique modifications (simplified, no duplicates)
         var uniqueMods = [];
         var seenMods = {};
         var modsForPeptide = modificationsMap[pid] || [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
-            if (modVal && !seenMods[modVal]) {
-                seenMods[modVal] = true;
-                uniqueMods.push(modVal);
+            var simplified = simplifyModification(modVal);
+            if (simplified && !seenMods[simplified]) {
+                seenMods[simplified] = true;
+                uniqueMods.push(simplified);
+            }
+        }
+        
+        // Also check sequence for amidated flag
+        if (rawSeq.indexOf('-NH2') !== -1 || rawSeq.indexOf('NH2') !== -1) {
+            if (!seenMods['Amidated']) {
+                uniqueMods.push('Amidated');
+                seenMods['Amidated'] = true;
             }
         }
         
@@ -415,7 +447,7 @@ function initModificationSelector() {
         var mods = peptidesData[i].modifications;
         for (var j = 0; j < mods.length; j++) {
             var mod = mods[j];
-            if (mod && mod !== 'N/A' && mod !== '') {
+            if (mod && mod !== 'N/A') {
                 modTypes[mod] = true;
             }
         }
@@ -583,26 +615,26 @@ function displayTableView(container) {
         '<table>' +
             '<thead>' +
                 '<tr>' +
-                    '<th onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th onclick="sortBy(\'length\')">Length</th>' +
-                    '<th onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th onclick="sortBy(\'structure_type\')">Structure</th>' +
-                    '<th onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th>Details</th>' +
-                '</tr>' +
+                    '<th style="width:15%;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th style="width:40%;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th style="width:8%;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th style="width:10%;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th style="width:10%;" onclick="sortBy(\'structure_type\')">Structure</th>' +
+                    '<th style="width:12%;" onclick="sortBy(\'source_organism\')">Source</th>' +
+                    '<th style="width:5%;">Details</th>' +
+                '</table>' +
             '</thead>' +
             '<tbody>';
     
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
         var seqShort = p.sequence_one_letter ? 
-            (p.sequence_one_letter.length > 30 ? p.sequence_one_letter.substring(0,30) + '...' : p.sequence_one_letter) : 'N/A';
+            (p.sequence_one_letter.length > 40 ? p.sequence_one_letter.substring(0,40) + '...' : p.sequence_one_letter) : 'N/A';
         var url = getPeptideUrl(p.id, p.peptide_name);
         
         html += '<tr>' +
-            '<td style="padding: 0.7rem 0.5rem;"><a href="' + url + '" style="color:#2c5282;font-weight:bold;">' + (p.peptide_name || 'N/A') + '</a></td>' +
-            '<td style="font-family:monospace;font-size:0.65rem;">' + seqShort + '</td>' +
+            '<td style="padding: 0.7rem 0.5rem; word-break: break-word;"><a href="' + url + '" style="color:#2c5282;font-weight:bold;">' + (p.peptide_name || 'N/A') + '</a></td>' +
+            '<td style="font-family:monospace;font-size:0.65rem; word-break: break-all;">' + seqShort + '</td>' +
             '<td>' + (p.length || 'N/A') + '</td>' +
             '<td>' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
             '<td>' + (p.structure_type || 'N/A') + '</td>' +
