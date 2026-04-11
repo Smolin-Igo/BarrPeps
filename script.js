@@ -733,15 +733,21 @@ function formatSequenceWithMods(seq) {
 }
 
 function displayFullPeptideDetail(peptide) {
-    // Modifications - show ALL
+    // Modifications - remove duplicates
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
-        var modList = [];
+        var uniqueMods = [];
+        var seen = {};
         for (var i = 0; i < peptide.modifications.length; i++) {
-            modList.push(peptide.modifications[i]);
+            var mod = peptide.modifications[i];
+            if (!seen[mod]) {
+                seen[mod] = true;
+                uniqueMods.push(mod);
+            }
         }
+        var modList = uniqueMods.join(', ');
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">' + modList.join(', ') + '</span></div>' +
+            '<div class="detail-row"><span class="detail-value">' + modList + '</span></div>' +
             '</div>';
     } else {
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
