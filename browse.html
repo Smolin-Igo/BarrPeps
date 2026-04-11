@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Browse Peptides - BarrPeps Database</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        .filters-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .filter-field {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-field label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #4a5568;
+            text-transform: uppercase;
+            margin-bottom: 0.2rem;
+        }
+        
+        .filter-field input, .filter-field select {
+            padding: 0.4rem 0.5rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            background: white;
+        }
+        
+        .range-group {
+            display: flex;
+            gap: 0.3rem;
+            align-items: center;
+        }
+        
+        .range-group input {
+            width: 100%;
+        }
+        
+        .range-group span {
+            font-size: 0.7rem;
+            color: #718096;
+        }
+        
+        .aa-compact {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-top: 0.2rem;
+        }
+        
+        .aa-btn-compact {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e0;
+            background: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+        }
+        
+        .aa-btn-compact.selected {
+            background: #4299e1;
+            color: white;
+            border-color: #4299e1;
+        }
+        
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: flex-end;
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #edf2f7;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .results-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        
+        .download-btn {
+            background: #48bb78;
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .download-btn:hover {
+            background: #38a169;
+        }
+        
+        .modification {
+            background-color: #fef5e7;
+            color: #d69e2e;
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+            font-size: 0.65rem;
+            font-weight: normal;
+            cursor: help;
+        }
+        
+        @media (min-width: 768px) {
+            .filters-panel {
+                padding: 1.25rem;
+            }
+            
+            .filter-field label {
+                font-size: 0.7rem;
+            }
+            
+            .filter-field input, .filter-field select {
+                padding: 0.5rem 0.6rem;
+                font-size: 0.8rem;
+            }
+            
+            .aa-btn-compact {
+                width: 32px;
+                height: 32px;
+                font-size: 0.75rem;
+            }
+            
+            .download-btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand" style="text-decoration: none;">
+                <h1>BarrPeps</h1>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </a>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="browse.html" class="active">Browse Database</a>
+                <a href="#" onclick="showUnderConstruction()">Statistics</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="page-header">
+            <h1>Browse Peptides</h1>
+            <p>Explore the complete collection of peptides crossing the blood-brain barrier</p>
+        </div>
+
+        <div class="filters-panel">
+            <div class="filters-grid">
+                <div class="filter-field">
+                    <label>🔍 Search</label>
+                    <input type="text" id="searchInput" placeholder="Name / sequence / source...">
+                </div>
+                
+                <div class="filter-field">
+                    <label>📏 Length (aa)</label>
+                    <div class="range-group">
+                        <input type="number" id="lengthMin" placeholder="Min" value="0">
+                        <span>-</span>
+                        <input type="number" id="lengthMax" placeholder="Max" value="100">
+                    </div>
+                </div>
+                
+                <div class="filter-field">
+                    <label>🔬 Structure Type</label>
+                    <select id="structureFilter">
+                        <option value="all">All</option>
+                        <option value="Linear">Linear</option>
+                        <option value="Cyclic">Cyclic</option>
+                        <option value="alpha-helix">Alpha-helix</option>
+                        <option value="beta-sheet">Beta-sheet</option>
+                        <option value="random-coil">Random coil</option>
+                    </select>
+                </div>
+                
+                <div class="filter-field">
+                    <label>⚙️ Modifications</label>
+                    <select id="modFilter">
+                        <option value="all">All</option>
+                        <option value="amidation">Amidation</option>
+                        <option value="acylation">Acylation</option>
+                        <option value="cyclization">Cyclization</option>
+                        <option value="glycosylation">Glycosylation</option>
+                        <option value="phosphorylation">Phosphorylation</option>
+                        <option value="methylated">Methylated</option>
+                        <option value="acetylated">Acetylated</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="filter-row">
+                <div class="filter-field" style="flex:2">
+                    <label>🧬 Required Amino Acids</label>
+                    <div class="aa-compact" id="aaSelector">
+                        <button type="button" class="aa-btn-compact" data-aa="A">A</button>
+                        <button type="button" class="aa-btn-compact" data-aa="R">R</button>
+                        <button type="button" class="aa-btn-compact" data-aa="N">N</button>
+                        <button type="button" class="aa-btn-compact" data-aa="D">D</button>
+                        <button type="button" class="aa-btn-compact" data-aa="C">C</button>
+                        <button type="button" class="aa-btn-compact" data-aa="Q">Q</button>
+                        <button type="button" class="aa-btn-compact" data-aa="E">E</button>
+                        <button type="button" class="aa-btn-compact" data-aa="G">G</button>
+                        <button type="button" class="aa-btn-compact" data-aa="H">H</button>
+                        <button type="button" class="aa-btn-compact" data-aa="I">I</button>
+                        <button type="button" class="aa-btn-compact" data-aa="L">L</button>
+                        <button type="button" class="aa-btn-compact" data-aa="K">K</button>
+                        <button type="button" class="aa-btn-compact" data-aa="M">M</button>
+                        <button type="button" class="aa-btn-compact" data-aa="F">F</button>
+                        <button type="button" class="aa-btn-compact" data-aa="P">P</button>
+                        <button type="button" class="aa-btn-compact" data-aa="S">S</button>
+                        <button type="button" class="aa-btn-compact" data-aa="T">T</button>
+                        <button type="button" class="aa-btn-compact" data-aa="W">W</button>
+                        <button type="button" class="aa-btn-compact" data-aa="Y">Y</button>
+                        <button type="button" class="aa-btn-compact" data-aa="V">V</button>
+                    </div>
+                </div>
+                
+                <div class="filter-actions">
+                    <button class="btn-primary" onclick="applyAllFilters()" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Apply Filters</button>
+                    <button class="btn-secondary" onclick="resetAllFilters()" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Reset</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-header">
+            <div class="results-count" id="resultsCount">Found peptides: 0</div>
+            <div class="results-actions">
+                <button class="download-btn" onclick="downloadResults()">📥 Download Results (CSV)</button>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" onclick="setView('table')">Table</button>
+                    <button class="toggle-btn" onclick="setView('card')">Cards</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsContainer">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading data...
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>BarrPeps Database</h3>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </div>
+            <div class="footer-section">
+                <h3>Quick Links</h3>
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+            </div>
+            <div class="footer-section">
+                <h3>Data Sources</h3>
+                <p>Curated from peer-reviewed literature</p>
+                <p>Last updated: April 2026</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 BarrPeps Database. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <div id="underConstructionModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Under Construction</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>This section is currently under development. Please check back soon for detailed statistics and analysis.</p>
+                <button onclick="closeModal()" class="btn-primary" style="margin-top: 1rem;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

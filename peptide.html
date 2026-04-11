@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title id="pageTitle">BarrPeps - Peptide Details</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        .structure-viewer {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .structure-container {
+            position: relative;
+            width: 100%;
+            height: 260px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .no-structure {
+            text-align: center;
+            padding: 1.5rem;
+            color: #718096;
+            font-size: 0.8rem;
+        }
+        
+        .modification {
+            background-color: #fef5e7;
+            color: #d69e2e;
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: normal;
+            cursor: help;
+        }
+        
+        .modification:hover {
+            background-color: #fbd38d;
+        }
+        
+        @media (min-width: 768px) {
+            .structure-container {
+                height: 320px;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .structure-container {
+                height: 340px;
+            }
+        }
+        
+        .back-button {
+            display: inline-block;
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+        
+        @media (min-width: 768px) {
+            .back-button {
+                font-size: 1rem;
+                padding: 0.6rem 1.2rem;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand" style="text-decoration: none;">
+                <h1>BarrPeps</h1>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </a>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="peptide-detail-container" id="peptideDetail">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading peptide data...
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>BarrPeps Database</h3>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </div>
+            <div class="footer-section">
+                <h3>Quick Links</h3>
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+            </div>
+            <div class="footer-section">
+                <h3>Data Sources</h3>
+                <p>Curated from peer-reviewed literature</p>
+                <p>Last updated: April 2026</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 BarrPeps Database. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <div id="underConstructionModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Under Construction</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>This section is currently under development. Please check back soon for detailed statistics and analysis.</p>
+                <button onclick="closeModal()" class="btn-primary" style="margin-top: 1rem;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
