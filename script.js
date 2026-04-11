@@ -1,7 +1,11 @@
 // BarrPeps Database - Main JavaScript
-// Direct Excel file reader using SheetJS
+// Direct Excel file reader using SheetJS - reads all 4 sheets
 
 let peptidesData = [];
+let experimentsData = [];
+let referencesData = [];
+let modificationsData = [];
+
 let currentView = 'table';
 let sortColumn = 'peptide_name';
 let sortDirection = 'asc';
@@ -27,21 +31,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function copySMILES(smiles) {
-    navigator.clipboard.writeText(smiles).then(() => {
-        const btn = document.querySelector('.copy-btn');
-        if (btn) {
-            const originalText = btn.textContent;
-            btn.textContent = 'Copied!';
-            setTimeout(() => {
-                btn.textContent = originalText;
-            }, 2000);
-        }
-    }).catch(() => {
-        alert('Failed to copy SMILES');
-    });
-}
-
 function showUnderConstruction() {
     const modal = document.getElementById('underConstructionModal');
     if (modal) {
@@ -63,7 +52,7 @@ window.onclick = function(event) {
     }
 }
 
-// ========== EXCEL FILE LOADER ==========
+// ========== EXCEL FILE LOADER - ALL SHEETS ==========
 async function loadExcelData() {
     try {
         console.log('Loading Excel file: database.xlsx');
@@ -75,12 +64,39 @@ async function loadExcelData() {
         
         const arrayBuffer = await response.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rawData = XLSX.utils.sheet_to_json(worksheet);
-        console.log(`Loaded ${rawData.length} rows from Excel`);
         
-        parseExcelData(rawData);
+        // Load all sheets
+        const sheets = workbook.SheetNames;
+        console.log('Sheets found:', sheets);
+        
+        for (const sheetName of sheets) {
+            const worksheet = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(worksheet);
+            
+            switch(sheetName.toLowerCase()) {
+                case 'peptides':
+                    peptidesData = data;
+                    console.log(`Loaded ${peptidesData.length} peptides`);
+                    break;
+                case 'experiments':
+                    experimentsData = data;
+                    console.log(`Loaded ${experimentsData.length} experiments`);
+                    break;
+                case 'references':
+                    referencesData = data;
+                    console.log(`Loaded ${referencesData.length} references`);
+                    break;
+                case 'modifications':
+                    modificationsData = data;
+                    console.log(`Loaded ${modificationsData.length} modifications`);
+                    break;
+                default:
+                    console.log(`Unknown sheet: ${sheetName}`);
+            }
+        }
+        
+        // Process and merge data
+        processAllData();
         
     } catch (error) {
         console.error('Error loading Excel:', error);
@@ -119,49 +135,85 @@ function formatSequenceWithModifications(sequence) {
     return formatted;
 }
 
-function parseExcelData(rawData) {
-    peptidesData = [];
+function getModificationsForPeptide(peptideId) {
+    return modificationsData.filter(m => m['peptide_id'] === peptideId);
+}
+
+function getReferencesForPeptide(peptideId) {
+    return referencesData.filter(r => r['peptide_id'] === peptideId);
+}
+
+function getExperimentsForPeptide(peptideId) {
+    return experimentsData.filter(e => e['peptide_id'] === peptideId);
+}
+
+function processAllData() {
+    // Build enhanced peptide objects with all related data
+    const enhancedPeptides = [];
     
-    rawData.forEach((row, index) => {
-        const originalSequence = row['sequence_1'] || row['sequence_one_letter'] || '';
+    peptidesData.forEach((peptide, index) => {
+        const peptideId = peptide['peptide_id'] || index + 1;
+        const modifications = getModificationsForPeptide(peptideId);
+        const references = getReferencesForPeptide(peptideId);
+        const experiments = getExperimentsForPeptide(peptideId);
         
-        const peptide = {
-            id: row['peptide_id'] || index + 1,
-            peptide_name: row['trivial_name'] || row['peptide_name'] || `Peptide_${index + 1}`,
-            sequence_one_letter: originalSequence,
-            sequence_three_letter: row['sequence_3'] || row['sequence_three_letter'] || '',
-            length: parseInt(row['length']) || originalSequence.length || 0,
-            molecular_weight: parseFloat(row['molecular_weight']) || 0,
+        // Collect unique transport types from experiments
+        const transportTypes = [...new Set(experiments.map(e => e['transport_type']).filter(t => t))];
+        
+        // Collect BBB permeability values
+        const bbbValues = experiments.filter(e => e['response'] === 'Kin' || e['response'] === 'Pe').map(e => ({
+            value: e['result'],
+            unit: e['unit'],
+            method: e['method']
+        }));
+        
+        // Collect modification types
+        const modTypes = [...new Set(modifications.map(m => m['modifications']).filter(m => m))];
+        
+        // Find best reference
+        const primaryRef = references.find(r => r['source_ref_id'] && r['authors']) || references[0];
+        
+        const enhancedPeptide = {
+            id: peptideId,
+            peptide_name: peptide['trivial_name'] || peptide['peptide_name'] || `Peptide_${peptideId}`,
+            sequence_one_letter: peptide['sequence_1'] || peptide['sequence_one_letter'] || '',
+            sequence_three_letter: peptide['sequence_3'] || peptide['sequence_three_letter'] || '',
+            length: parseInt(peptide['length']) || 0,
+            molecular_weight: parseFloat(peptide['molecular_weight']) || 0,
+            molecular_formula: peptide['molecular_formula'] || '',
             net_charge: null,
             hydrophobicity: null,
-            structure_type: row['conformation'] || row['structure_type'] || '',
-            source_organism: row['origin'] || row['source_organism'] || '',
-            antimicrobial_targets: null,
-            antimicrobial_mic: null,
-            anticancer_cell_lines: null,
-            anticancer_ic50: null,
-            anticancer_selectivity: null,
-            bbb_permeability_value: null,
-            bbb_transport_type: null,
-            bbb_model: null,
-            toxicity_hemolysis: null,
-            stability_serum: null,
-            synergy: null,
-            pmid: null,
-            doi: null,
-            notes: row['disulfide_bridge'] ? `Disulfide bridges: ${row['disulfide_bridge']}` : (row['notes'] || ''),
-            created_date: null,
-            molecular_formula: row['molecular_formula'] || '',
-            disulfide_bridge: row['disulfide_bridge'] || '',
-            nature: row['nature'] || '',
+            structure_type: peptide['conformation'] || peptide['structure_type'] || '',
+            source_organism: peptide['origin'] || peptide['source_organism'] || '',
+            disulfide_bridge: peptide['disulfide_bridge'] || '',
+            nature: peptide['nature'] || '',
+            
+            // Related data from other sheets
+            modifications: modTypes,
+            modifications_detail: modifications,
+            references: references,
+            experiments: experiments,
+            transport_types: transportTypes,
+            bbb_permeability_values: bbbValues,
+            
+            // Literature info
+            authors: primaryRef ? primaryRef['authors'] : '',
+            title: primaryRef ? primaryRef['title'] : '',
+            year: primaryRef ? primaryRef['year'] : '',
+            journal: primaryRef ? primaryRef['journal'] : '',
+            
+            // Legacy fields for compatibility
+            notes: peptide['disulfide_bridge'] ? `Disulfide bridges: ${peptide['disulfide_bridge']}` : '',
             PDB: null
         };
         
-        peptidesData.push(peptide);
+        enhancedPeptides.push(enhancedPeptide);
     });
     
-    console.log(`Parsed ${peptidesData.length} peptides from Excel`);
+    peptidesData = enhancedPeptides;
     filteredPeptides = [...peptidesData];
+    
+    console.log(`Processed ${peptidesData.length} peptides with all related data`);
     
     const currentPage = window.location.pathname.split('/').pop();
     console.log('Current page:', currentPage);
@@ -512,15 +564,16 @@ function checkModification(peptide, modType) {
     const notes = (peptide.notes || '').toLowerCase();
     const name = (peptide.peptide_name || '').toLowerCase();
     const sequence = (peptide.sequence_one_letter || '').toLowerCase();
+    const mods = peptide.modifications || [];
     
     switch(modType) {
-        case 'amidation': return notes.includes('amid') || name.includes('amid') || sequence.includes('nh2');
-        case 'acylation': return notes.includes('acyl') || name.includes('acyl');
-        case 'cyclization': return notes.includes('cycl') || notes.includes('cyclic');
-        case 'glycosylation': return notes.includes('glyco');
-        case 'phosphorylation': return notes.includes('phospho');
-        case 'methylated': return notes.includes('methyl') || sequence.includes('me') || sequence.includes('nme');
-        case 'acetylated': return notes.includes('acetyl') || sequence.includes('ac');
+        case 'amidation': return notes.includes('amid') || name.includes('amid') || sequence.includes('nh2') || mods.some(m => m.toLowerCase().includes('amid'));
+        case 'acylation': return notes.includes('acyl') || name.includes('acyl') || mods.some(m => m.toLowerCase().includes('acyl'));
+        case 'cyclization': return notes.includes('cycl') || notes.includes('cyclic') || mods.some(m => m.toLowerCase().includes('cycl'));
+        case 'glycosylation': return notes.includes('glyco') || mods.some(m => m.toLowerCase().includes('glyco'));
+        case 'phosphorylation': return notes.includes('phospho') || mods.some(m => m.toLowerCase().includes('phospho'));
+        case 'methylated': return notes.includes('methyl') || sequence.includes('me') || sequence.includes('nme') || mods.some(m => m.toLowerCase().includes('methyl'));
+        case 'acetylated': return notes.includes('acetyl') || sequence.includes('ac') || mods.some(m => m.toLowerCase().includes('acetyl'));
         default: return true;
     }
 }
@@ -590,7 +643,7 @@ function downloadResults() {
         return;
     }
     
-    const headers = ['ID', 'Peptide Name', 'Sequence', 'Length', 'MW (Da)', 'Structure Type', 'Source Organism', 'Molecular Formula', 'Disulfide Bridges', 'Notes'];
+    const headers = ['ID', 'Peptide Name', 'Sequence', 'Length', 'MW (Da)', 'Molecular Formula', 'Structure Type', 'Source Organism', 'Disulfide Bridges', 'Modifications', 'References', 'Transport Types', 'Authors', 'Year', 'Journal'];
     
     const rows = filteredPeptides.map(p => [
         p.id || '',
@@ -598,11 +651,16 @@ function downloadResults() {
         p.sequence_one_letter || '',
         p.length || '',
         p.molecular_weight || '',
+        p.molecular_formula || '',
         p.structure_type || '',
         p.source_organism || '',
-        p.molecular_formula || '',
         p.disulfide_bridge || '',
-        (p.notes || '').replace(/,/g, ';')
+        (p.modifications || []).join('; '),
+        p.references ? p.references.length : 0,
+        (p.transport_types || []).join('; '),
+        p.authors || '',
+        p.year || '',
+        p.journal || ''
     ]);
     
     const csvContent = [headers, ...rows].map(row => 
@@ -651,6 +709,7 @@ function displayTableView(container) {
                         <th onclick="sortBy('molecular_weight')">MW (Da)</th>
                         <th onclick="sortBy('structure_type')">Structure</th>
                         <th onclick="sortBy('source_organism')">Source</th>
+                        <th>Modifications</th>
                         <th>Details</th>
                     </tr>
                 </thead>
@@ -659,11 +718,13 @@ function displayTableView(container) {
     
     filteredPeptides.forEach(peptide => {
         const sequenceDisplay = peptide.sequence_one_letter ? 
-            (peptide.sequence_one_letter.length > 35 ? 
-                peptide.sequence_one_letter.substring(0, 35) + '...' : 
+            (peptide.sequence_one_letter.length > 30 ? 
+                peptide.sequence_one_letter.substring(0, 30) + '...' : 
                 peptide.sequence_one_letter) : 'N/A';
         
         const peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
+        const modsDisplay = peptide.modifications && peptide.modifications.length > 0 ? 
+            peptide.modifications.slice(0, 2).join(', ') + (peptide.modifications.length > 2 ? '...' : '') : '—';
         
         html += `
             <tr>
@@ -677,6 +738,7 @@ function displayTableView(container) {
                 <td>${peptide.molecular_weight ? peptide.molecular_weight.toFixed(1) : 'N/A'}</td>
                 <td>${peptide.structure_type || 'N/A'}</td>
                 <td>${peptide.source_organism || 'N/A'}</td>
+                <td><span style="font-size: 0.65rem;">${modsDisplay}</span></td>
                 <td><a href="${peptideUrl}" class="btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.65rem; text-decoration: none;">View</a></td>
             </tr>
         `;
@@ -691,6 +753,8 @@ function displayCardBrowseView(container) {
     
     filteredPeptides.forEach(peptide => {
         const peptideUrl = getPeptideUrl(peptide.id, peptide.peptide_name);
+        const modsDisplay = peptide.modifications && peptide.modifications.length > 0 ? 
+            peptide.modifications.slice(0, 3).join(', ') : '—';
         
         html += `
             <div class="peptide-card" onclick="window.location.href='${peptideUrl}'" style="cursor: pointer;">
@@ -711,8 +775,12 @@ function displayCardBrowseView(container) {
                         <div class="card-value">${peptide.structure_type || 'N/A'}</div>
                     </div>
                     <div class="card-row">
+                        <div class="card-label">Modifications:</div>
+                        <div class="card-value" style="font-size: 0.7rem;">${modsDisplay}</div>
+                    </div>
+                    <div class="card-row">
                         <div class="card-label">Sequence:</div>
-                        <div class="card-value" style="font-family: monospace; font-size: 0.7rem; word-break: break-all;">${peptide.sequence_one_letter || 'N/A'}</div>
+                        <div class="card-value" style="font-family: monospace; font-size: 0.65rem; word-break: break-all;">${peptide.sequence_one_letter || 'N/A'}</div>
                     </div>
                 </div>
             </div>
@@ -790,8 +858,57 @@ async function initPeptidePage() {
     displayPeptideDetail(peptide);
 }
 
+function formatReferenceList(references) {
+    if (!references || references.length === 0) return 'N/A';
+    
+    return references.map(ref => {
+        const authors = ref['authors'] || '';
+        const year = ref['year'] || '';
+        const journal = ref['journal'] || '';
+        const title = ref['title'] || '';
+        
+        if (authors && year && journal) {
+            return `${authors} (${year}). ${title}. ${journal}.`;
+        } else if (authors && year) {
+            return `${authors} (${year}). ${title || ''}`;
+        }
+        return title || 'Reference';
+    }).join('<br><br>');
+}
+
+function formatExperiments(experiments) {
+    if (!experiments || experiments.length === 0) return 'N/A';
+    
+    const uniqueExperiments = [];
+    const seen = new Set();
+    
+    experiments.forEach(exp => {
+        const key = `${exp['method']}_${exp['response']}_${exp['result']}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueExperiments.push(exp);
+        }
+    });
+    
+    return uniqueExperiments.slice(0, 10).map(exp => {
+        const method = exp['method'] || 'N/A';
+        const response = exp['response'] || 'N/A';
+        const result = exp['result'] || 'N/A';
+        const unit = exp['unit'] || '';
+        const transportType = exp['transport_type'] || '';
+        
+        let text = `<strong>${method}</strong>: ${response} = ${result} ${unit}`;
+        if (transportType) text += ` (${transportType})`;
+        return text;
+    }).join('<br>');
+}
+
 function displayPeptideDetail(peptide) {
     const formattedSequence = formatSequenceWithModifications(peptide.sequence_one_letter);
+    const refsHtml = formatReferenceList(peptide.references);
+    const experimentsHtml = formatExperiments(peptide.experiments);
+    const modsHtml = peptide.modifications && peptide.modifications.length > 0 ? 
+        peptide.modifications.map(m => `<span class="modification">${m}</span>`).join(', ') : 'N/A';
     
     const html = `
         <div class="peptide-detail-container">
@@ -816,12 +933,34 @@ function displayPeptideDetail(peptide) {
                 <div class="detail-row"><span class="detail-label">Structure Type:</span><span class="detail-value">${peptide.structure_type || 'N/A'}</span></div>
                 <div class="detail-row"><span class="detail-label">Disulfide Bridges:</span><span class="detail-value">${peptide.disulfide_bridge || 'N/A'}</span></div>
                 <div class="detail-row"><span class="detail-label">Nature:</span><span class="detail-value">${peptide.nature || 'N/A'}</span></div>
+                <div class="detail-row"><span class="detail-label">Modifications:</span><span class="detail-value">${modsHtml}</span></div>
             </div>
             
             <div class="detail-section">
                 <h3>Biological Source</h3>
                 <div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">${peptide.source_organism || 'N/A'}</span></div>
             </div>
+            
+            ${peptide.transport_types && peptide.transport_types.length > 0 ? `
+            <div class="detail-section">
+                <h3>Transport Properties</h3>
+                <div class="detail-row"><span class="detail-label">Transport Types:</span><span class="detail-value">${peptide.transport_types.join(', ')}</span></div>
+            </div>
+            ` : ''}
+            
+            ${experimentsHtml !== 'N/A' ? `
+            <div class="detail-section">
+                <h3>Experimental Data</h3>
+                <div class="detail-row"><span class="detail-label">Experiments:</span><span class="detail-value" style="font-size: 0.8rem;">${experimentsHtml}</span></div>
+            </div>
+            ` : ''}
+            
+            ${refsHtml !== 'N/A' ? `
+            <div class="detail-section">
+                <h3>References</h3>
+                <div class="detail-row"><span class="detail-label">Literature:</span><span class="detail-value" style="font-size: 0.8rem;">${refsHtml}</span></div>
+            </div>
+            ` : ''}
             
             <div class="detail-section">
                 <h3>Additional Information</h3>
@@ -842,7 +981,6 @@ window.searchPeptides = applyAllFilters;
 window.resetFilters = resetAllFilters;
 window.setView = setView;
 window.sortBy = sortBy;
-window.copySMILES = copySMILES;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 window.applyAllFilters = applyAllFilters;
