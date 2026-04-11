@@ -1,4 +1,4 @@
-// BarrPeps Database - Optimized Version
+// BarrPeps Database - Full Version with Fixed Statistics and Filters
 
 let peptidesData = [];
 let experimentsData = [];
@@ -10,6 +10,11 @@ let sortColumn = 'peptide_name';
 let sortDirection = 'asc';
 let filteredPeptides = [];
 let selectedAAs = [];
+
+// Chart instances
+let lengthChart = null;
+let chargeChart = null;
+let aaChart = null;
 
 function getPeptideUrl(peptideId, peptideName) {
     return 'peptide.html?id=' + peptideId + '&name=' + encodeURIComponent(peptideName);
@@ -80,9 +85,11 @@ function loadExcelFile() {
 function useFallbackData() {
     console.log('Using fallback data');
     peptidesData = [
-        { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
-        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", length: 51, molecular_weight: 5807.57, origin: "human", conformation: "Linear" },
-        { peptide_id: 3, trivial_name: "dynantin", sequence_1: "GGFLRRIRPK", length: 10, molecular_weight: 1388.71, origin: "synthetic", conformation: "Linear" }
+        { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", sequence_3: "ThrPhePheTyrGlyGlySerArgGlyLysArgAsnAsnPheLysThrGluGluTyr", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
+        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", sequence_3: "GlyIleValGluGlnCysCysThrSerIleCysSerLeuTyrGlnLeuGluAsnTyrCysAsn", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" },
+        { peptide_id: 3, trivial_name: "dynantin", sequence_1: "GGFLRRIRPK", sequence_3: "GlyGlyPheLeuArgArgIleArgProLys", length: 10, molecular_weight: 1388.71, origin: "synthetic", conformation: "Linear" },
+        { peptide_id: 4, trivial_name: "P43", sequence_1: "(Me2)Y-cit-FK-NH2", sequence_3: "TyrCitPheLys", length: 4, molecular_weight: 640.78, origin: "synthetic", conformation: "Linear" },
+        { peptide_id: 5, trivial_name: "P42", sequence_1: "(Me2)Y-rF-Nle-NH2", sequence_3: "TyrArgPheNle", length: 4, molecular_weight: 624.78, origin: "synthetic", conformation: "Linear" }
     ];
     processAllData();
 }
@@ -125,6 +132,7 @@ function processAllData() {
         var p = peptidesData[i];
         var pid = p['peptide_id'] || i + 1;
         var rawSeq = p['sequence_1'] || p['sequence_one_letter'] || '';
+        var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
         enhanced.push({
@@ -132,7 +140,7 @@ function processAllData() {
             peptide_name: p['trivial_name'] || p['peptide_name'] || 'Peptide_' + pid,
             sequence_one_letter: rawSeq,
             sequence_clean: cleanSeq,
-            sequence_three_letter: p['sequence_3'] || p['sequence_three_letter'] || '',
+            sequence_three_letter: threeSeq,
             length: parseInt(p['length']) || cleanSeq.length,
             molecular_weight: parseFloat(p['molecular_weight']) || 0,
             molecular_formula: p['molecular_formula'] || '',
@@ -161,10 +169,136 @@ function processAllData() {
     }
 }
 
+// ========== CHART FUNCTIONS ==========
+function calculateLengthDistribution() {
+    var lengths = [];
+    for (var p = 0; p < peptidesData.length; p++) {
+        var l = peptidesData[p].length;
+        if (l > 0) lengths.push(l);
+    }
+    if (lengths.length === 0) return {};
+    
+    var maxLength = Math.max.apply(null, lengths);
+    var binSize = 5;
+    var bins = {};
+    
+    // Create bins with step 5
+    for (var i = 0; i <= maxLength + binSize; i += binSize) {
+        var binStart = i;
+        var binEnd = i + binSize;
+        var binLabel = binStart + '-' + binEnd;
+        bins[binLabel] = 0;
+    }
+    
+    // Count peptides in each bin
+    for (var i = 0; i < lengths.length; i++) {
+        var len = lengths[i];
+        var binIndex = Math.floor(len / binSize) * binSize;
+        var binLabel = binIndex + '-' + (binIndex + binSize);
+        if (bins[binLabel] !== undefined) bins[binLabel]++;
+    }
+    
+    // Remove empty bins at the end
+    var filtered = {};
+    var hasData = false;
+    for (var label in bins) {
+        if (bins[label] > 0) hasData = true;
+        if (hasData || bins[label] > 0) {
+            filtered[label] = bins[label];
+        }
+    }
+    return filtered;
+}
+
+function calculateAADistribution() {
+    var aaCounts = {
+        'A': 0, 'R': 0, 'N': 0, 'D': 0, 'C': 0, 'Q': 0, 'E': 0, 'G': 0,
+        'H': 0, 'I': 0, 'L': 0, 'K': 0, 'M': 0, 'F': 0, 'P': 0, 'S': 0,
+        'T': 0, 'W': 0, 'Y': 0, 'V': 0
+    };
+    var totalAAs = 0;
+    
+    for (var p = 0; p < peptidesData.length; p++) {
+        var seq = peptidesData[p].sequence_clean || '';
+        for (var i = 0; i < seq.length; i++) {
+            var aa = seq[i];
+            if (aaCounts[aa] !== undefined) {
+                aaCounts[aa]++;
+                totalAAs++;
+            }
+        }
+    }
+    
+    var result = {};
+    for (var aa in aaCounts) {
+        result[aa] = totalAAs > 0 ? (aaCounts[aa] / totalAAs * 100).toFixed(1) : 0;
+    }
+    return result;
+}
+
+function createLengthChart() {
+    var ctx = document.getElementById('lengthChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    
+    var dist = calculateLengthDistribution();
+    if (lengthChart) lengthChart.destroy();
+    
+    lengthChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(dist),
+            datasets: [{ 
+                label: 'Number of Peptides', 
+                data: Object.values(dist), 
+                backgroundColor: 'rgba(66,153,225,0.7)', 
+                borderColor: 'rgba(66,153,225,1)', 
+                borderWidth: 1 
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { position: 'top' } },
+            scales: { 
+                y: { beginAtZero: true, title: { display: true, text: 'Count' }, ticks: { stepSize: 1 } }, 
+                x: { title: { display: true, text: 'Length (aa)' } }
+            }
+        }
+    });
+}
+
+function createAAChart() {
+    var ctx = document.getElementById('aaChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    
+    var dist = calculateAADistribution();
+    if (aaChart) aaChart.destroy();
+    
+    aaChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(dist),
+            datasets: [{ label: 'Frequency (%)', data: Object.values(dist), backgroundColor: '#4299e1', borderColor: '#2c5282', borderWidth: 1 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Frequency (%)' } }, x: { title: { display: true, text: 'Amino Acid' } } }
+        }
+    });
+}
+
 // ========== HOME PAGE ==========
 function initHomePage() {
     updateHomeStats();
     displayFeaturedPeptides();
+    setTimeout(function() {
+        if (peptidesData.length > 0 && typeof Chart !== 'undefined') {
+            createLengthChart();
+            createAAChart();
+        }
+    }, 100);
 }
 
 function updateHomeStats() {
@@ -205,18 +339,84 @@ function displayFeaturedPeptides() {
     container.innerHTML = html;
 }
 
-// ========== BROWSE PAGE ==========
+// ========== BROWSE PAGE WITH FULL FILTERS ==========
 function initBrowsePage() {
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
     displayBrowseResults();
     setupBrowseEventListeners();
     initAASelector();
+    initStructureSelector();
+    initModificationSelector();
 }
 
 function setupBrowseEventListeners() {
-    var input = document.getElementById('searchInput');
-    if (input) input.addEventListener('keypress', function(e) { if (e.key === 'Enter') applyFilters(); });
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'structureFilter', 'modFilter'];
+    for (var i = 0; i < inputs.length; i++) {
+        var el = document.getElementById(inputs[i]);
+        if (el && inputs[i] !== 'searchInput') {
+            el.addEventListener('change', applyFilters);
+        }
+    }
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') applyFilters(); });
+}
+
+function initStructureSelector() {
+    var structSelect = document.getElementById('structureFilter');
+    if (!structSelect) return;
+    
+    // Get unique structure types
+    var structTypes = {};
+    for (var i = 0; i < peptidesData.length; i++) {
+        var st = peptidesData[i].structure_type;
+        if (st && st !== 'N/A' && st !== '') {
+            structTypes[st] = true;
+        }
+    }
+    
+    // Clear existing options except "All"
+    while (structSelect.options.length > 1) {
+        structSelect.remove(1);
+    }
+    
+    // Add structure types
+    for (var type in structTypes) {
+        var option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        structSelect.appendChild(option);
+    }
+}
+
+function initModificationSelector() {
+    var modSelect = document.getElementById('modFilter');
+    if (!modSelect) return;
+    
+    // Get unique modification types
+    var modTypes = {};
+    for (var i = 0; i < peptidesData.length; i++) {
+        var mods = peptidesData[i].modifications;
+        for (var j = 0; j < mods.length; j++) {
+            var mod = mods[j]['modifications'];
+            if (mod && mod !== 'N/A' && mod !== '') {
+                modTypes[mod] = true;
+            }
+        }
+    }
+    
+    // Clear existing options except "All"
+    while (modSelect.options.length > 1) {
+        modSelect.remove(1);
+    }
+    
+    // Add modification types
+    for (var type in modTypes) {
+        var option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        modSelect.appendChild(option);
+    }
 }
 
 function updateBrowseStats() {
@@ -240,6 +440,7 @@ function initAASelector() {
                 this.classList.add('selected');
                 selectedAAs.push(aa);
             }
+            applyFilters();
         });
     }
 }
@@ -252,9 +453,19 @@ function containsAllAAs(seq, required) {
     return true;
 }
 
+function checkModification(peptide, modType) {
+    if (modType === 'all' || !modType) return true;
+    var mods = peptide.modifications || [];
+    for (var i = 0; i < mods.length; i++) {
+        if (mods[i]['modifications'] === modType) return true;
+    }
+    return false;
+}
+
 function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
     var structType = document.getElementById('structureFilter') ? document.getElementById('structureFilter').value : 'all';
+    var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
     var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
     
@@ -262,6 +473,7 @@ function applyFilters() {
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
         
+        // Search filter
         if (searchTerm) {
             var inName = p.peptide_name && p.peptide_name.toLowerCase().indexOf(searchTerm) !== -1;
             var inSeq = p.sequence_one_letter && p.sequence_one_letter.toLowerCase().indexOf(searchTerm) !== -1;
@@ -269,9 +481,17 @@ function applyFilters() {
             if (!inName && !inSeq && !inSource) continue;
         }
         
+        // Length filter
         if (p.length < minLen || p.length > maxLen) continue;
-        if (structType !== 'all' && (p.structure_type || '').toLowerCase() !== structType.toLowerCase()) continue;
+        
+        // Structure filter
+        if (structType !== 'all' && (p.structure_type || '') !== structType) continue;
+        
+        // Amino acid filter
         if (selectedAAs.length > 0 && !containsAllAAs(p.sequence_clean || '', selectedAAs)) continue;
+        
+        // Modification filter
+        if (!checkModification(p, modType)) continue;
         
         result.push(p);
     }
@@ -282,12 +502,16 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'structureFilter'];
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'structureFilter', 'modFilter'];
     for (var i = 0; i < inputs.length; i++) {
         var el = document.getElementById(inputs[i]);
-        if (el) el.value = (inputs[i] === 'lengthMin' ? 0 : (inputs[i] === 'lengthMax' ? 100 : ''));
+        if (el) {
+            if (inputs[i] === 'lengthMin') el.value = 0;
+            else if (inputs[i] === 'lengthMax') el.value = 100;
+            else if (inputs[i] === 'searchInput') el.value = '';
+            else el.value = 'all';
+        }
     }
-    if (document.getElementById('structureFilter')) document.getElementById('structureFilter').value = 'all';
     
     selectedAAs = [];
     var btns = document.querySelectorAll('.aa-btn-compact');
@@ -342,7 +566,7 @@ function displayBrowseResults() {
 }
 
 function displayTableView(container) {
-    var html = '<div class="table-view"><tr><thead><tr>' +
+    var html = '<div class="table-view"><table><thead><tr>' +
         '<th onclick="sortBy(\'peptide_name\')">Name</th>' +
         '<th onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
         '<th onclick="sortBy(\'length\')">Length</th>' +
@@ -350,7 +574,7 @@ function displayTableView(container) {
         '<th onclick="sortBy(\'structure_type\')">Structure</th>' +
         '<th onclick="sortBy(\'source_organism\')">Source</th>' +
         '<th>Details</th>' +
-        '</table></thead><tbody>';
+        '</tr></thead><tbody>';
     
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
@@ -415,7 +639,7 @@ function sortBy(column) {
     displayBrowseResults();
 }
 
-// ========== PEPTIDE DETAIL PAGE - OPTIMIZED ==========
+// ========== PEPTIDE DETAIL PAGE ==========
 function initPeptidePage() {
     var urlParams = new URLSearchParams(window.location.search);
     var peptideId = parseInt(urlParams.get('id'));
@@ -458,7 +682,7 @@ function formatResultWithUnit(exp) {
 }
 
 function displayOptimizedPeptideDetail(peptide) {
-    // Modifications - only if exists
+    // Modifications
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
         var modList = [];
@@ -473,7 +697,14 @@ function displayOptimizedPeptideDetail(peptide) {
         }
     }
     
-    // Experiments - only non-empty fields, Result with Unit combined
+    // Clean sequence (without modifications)
+    var cleanSequence = peptide.sequence_clean || '';
+    var cleanSequenceDisplay = cleanSequence ? cleanSequence : 'N/A';
+    
+    // Three-letter sequence
+    var threeLetterDisplay = peptide.sequence_three_letter || 'N/A';
+    
+    // Experiments
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
         for (var i = 0; i < peptide.experiments.length; i++) {
@@ -481,72 +712,52 @@ function displayOptimizedPeptideDetail(peptide) {
             var hasContent = false;
             var expHtml = '<div class="experiment-item" style="margin-bottom: 1rem; padding: 0.5rem; background: #f0f4f8; border-radius: 6px;">';
             
-            // Method (always show if exists)
             if (exp['method']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Method:</span><span class="detail-value">' + exp['method'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Method Type
             if (exp['method_type']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Type:</span><span class="detail-value">' + exp['method_type'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Response
             if (exp['response']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Response:</span><span class="detail-value">' + exp['response'] + '</span></div>';
                 hasContent = true;
             }
             
-            // Result with Unit (combined)
             var resultWithUnit = formatResultWithUnit(exp);
             if (resultWithUnit) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Result:</span><span class="detail-value">' + resultWithUnit + '</span></div>';
                 hasContent = true;
             }
             
-            // Label
             if (exp['label']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Label:</span><span class="detail-value">' + exp['label'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Transport Type
             if (exp['transport_type']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Transport:</span><span class="detail-value">' + exp['transport_type'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Cell Line
             if (exp['cell_line']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Cell Line:</span><span class="detail-value">' + exp['cell_line'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Animal Model
             if (exp['animal_model']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Animal Model:</span><span class="detail-value">' + exp['animal_model'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Delivery
             if (exp['delivery']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Delivery:</span><span class="detail-value">' + exp['delivery'] + '</span></div>';
                 hasContent = true;
             }
-            
-            // Combination
             if (exp['combination']) {
                 expHtml += '<div class="detail-row"><span class="detail-label">Combination:</span><span class="detail-value">' + exp['combination'] + '</span></div>';
                 hasContent = true;
             }
             
             expHtml += '</div>';
-            
-            if (hasContent) {
-                experimentsHtml += expHtml;
-            }
+            if (hasContent) experimentsHtml += expHtml;
         }
     }
     
@@ -556,7 +767,7 @@ function displayOptimizedPeptideDetail(peptide) {
         experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' + experimentsHtml + '</div>';
     }
     
-    // References - only non-empty fields
+    // References
     var referencesHtml = '';
     if (peptide.references && peptide.references.length > 0) {
         for (var i = 0; i < peptide.references.length; i++) {
@@ -582,10 +793,7 @@ function displayOptimizedPeptideDetail(peptide) {
             }
             
             refHtml += '</div>';
-            
-            if (hasContent) {
-                referencesHtml += refHtml;
-            }
+            if (hasContent) referencesHtml += refHtml;
         }
     }
     
@@ -595,7 +803,7 @@ function displayOptimizedPeptideDetail(peptide) {
         referencesHtml = '<div class="detail-section"><h3>References</h3>' + referencesHtml + '</div>';
     }
     
-    // Build final HTML
+    // Final HTML
     var html = '<div class="peptide-detail-container">' +
         '<div style="margin-bottom:1rem;">' +
             '<a href="browse.html" class="btn-secondary back-button">← Back to Browse</a>' +
@@ -603,15 +811,15 @@ function displayOptimizedPeptideDetail(peptide) {
             '<p style="color:#718096;">ID: ' + peptide.id + '</p>' +
         '</div>' +
         
-        // Basic Information (always show)
         '<div class="detail-section"><h3>Basic Information</h3>' +
-            '<div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace; word-break:break-all;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Sequence (with modifications):</span><span class="detail-value" style="font-family:monospace; word-break:break-all;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Sequence (clean):</span><span class="detail-value" style="font-family:monospace; word-break:break-all;">' + cleanSequenceDisplay + '</span></div>' +
+            '<div class="detail-row"><span class="detail-label">Sequence (3-letter):</span><span class="detail-value" style="word-break:break-all;">' + threeLetterDisplay + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">' + (peptide.length || 'N/A') + ' aa</span></div>' +
             '<div class="detail-row"><span class="detail-label">Molecular Weight:</span><span class="detail-value">' + (peptide.molecular_weight ? peptide.molecular_weight.toFixed(2) : 'N/A') + ' Da</span></div>' +
             (peptide.molecular_formula ? '<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">' + peptide.molecular_formula + '</span></div>' : '') +
         '</div>' +
         
-        // Structural Properties (only if exists)
         (peptide.structure_type || peptide.disulfide_bridge || peptide.nature ? 
             '<div class="detail-section"><h3>Structural Properties</h3>' +
                 (peptide.structure_type ? '<div class="detail-row"><span class="detail-label">Structure:</span><span class="detail-value">' + peptide.structure_type + '</span></div>' : '') +
@@ -619,22 +827,15 @@ function displayOptimizedPeptideDetail(peptide) {
                 (peptide.nature ? '<div class="detail-row"><span class="detail-label">Nature:</span><span class="detail-value">' + peptide.nature + '</span></div>' : '') +
             '</div>' : '') +
         
-        // Source (only if exists)
         (peptide.source_organism && peptide.source_organism !== 'N/A' ? 
             '<div class="detail-section"><h3>Biological Source</h3>' +
                 '<div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">' + peptide.source_organism + '</span></div>' +
             '</div>' : '') +
         
-        // Modifications
         modsHtml +
-        
-        // Experimental Data
         experimentsHtml +
-        
-        // References
         referencesHtml +
         
-        // Notes (only if exists)
         (peptide.notes ? 
             '<div class="detail-section"><h3>Additional Information</h3>' +
                 '<div class="detail-row"><span class="detail-value">' + peptide.notes + '</span></div>' +
