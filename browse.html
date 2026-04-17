@@ -59,31 +59,6 @@
             color: #718096;
         }
         
-        .aa-compact {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.25rem;
-            margin-top: 0.2rem;
-        }
-        
-        .aa-btn-compact {
-            width: 28px;
-            height: 28px;
-            border-radius: 4px;
-            border: 1px solid #cbd5e0;
-            background: white;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.7rem;
-            transition: all 0.2s;
-        }
-        
-        .aa-btn-compact.selected {
-            background: #4299e1;
-            color: white;
-            border-color: #4299e1;
-        }
-        
         .filter-row {
             display: flex;
             flex-wrap: wrap;
@@ -146,12 +121,6 @@
                 font-size: 0.8rem;
             }
             
-            .aa-btn-compact {
-                width: 32px;
-                height: 32px;
-                font-size: 0.75rem;
-            }
-            
             .download-btn {
                 padding: 0.5rem 1rem;
                 font-size: 0.75rem;
@@ -183,12 +152,12 @@
         <div class="filters-panel">
             <div class="filters-grid">
                 <div class="filter-field">
-                    <label>🔍 Search</label>
+                    <label>Search</label>
                     <input type="text" id="searchInput" placeholder="Name / sequence / source...">
                 </div>
                 
                 <div class="filter-field">
-                    <label>📏 Length (aa)</label>
+                    <label>Length (aa)</label>
                     <div class="range-group">
                         <input type="number" id="lengthMin" placeholder="Min" value="0">
                         <span>-</span>
@@ -197,59 +166,23 @@
                 </div>
                 
                 <div class="filter-field">
-                    <label>🔬 Structure Type</label>
-                    <select id="structureFilter">
+                    <label>Modifications</label>
+                    <select id="modFilter">
                         <option value="all">All</option>
-                        <option value="Linear">Linear</option>
-                        <option value="Cyclic">Cyclic</option>
-                        <option value="alpha-helix">Alpha-helix</option>
-                        <option value="beta-sheet">Beta-sheet</option>
-                        <option value="random-coil">Random coil</option>
                     </select>
                 </div>
                 
                 <div class="filter-field">
-                    <label>⚙️ Modifications</label>
-                    <select id="modFilter">
+                    <label>Disulfide Bridge</label>
+                    <select id="disulfideFilter">
                         <option value="all">All</option>
-                        <option value="amidation">Amidation</option>
-                        <option value="acylation">Acylation</option>
-                        <option value="cyclization">Cyclization</option>
-                        <option value="glycosylation">Glycosylation</option>
-                        <option value="phosphorylation">Phosphorylation</option>
-                        <option value="methylated">Methylated</option>
-                        <option value="acetylated">Acetylated</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
                     </select>
                 </div>
             </div>
             
             <div class="filter-row">
-                <div class="filter-field" style="flex:2">
-                    <label>🧬 Required Amino Acids</label>
-                    <div class="aa-compact" id="aaSelector">
-                        <button type="button" class="aa-btn-compact" data-aa="A">A</button>
-                        <button type="button" class="aa-btn-compact" data-aa="R">R</button>
-                        <button type="button" class="aa-btn-compact" data-aa="N">N</button>
-                        <button type="button" class="aa-btn-compact" data-aa="D">D</button>
-                        <button type="button" class="aa-btn-compact" data-aa="C">C</button>
-                        <button type="button" class="aa-btn-compact" data-aa="Q">Q</button>
-                        <button type="button" class="aa-btn-compact" data-aa="E">E</button>
-                        <button type="button" class="aa-btn-compact" data-aa="G">G</button>
-                        <button type="button" class="aa-btn-compact" data-aa="H">H</button>
-                        <button type="button" class="aa-btn-compact" data-aa="I">I</button>
-                        <button type="button" class="aa-btn-compact" data-aa="L">L</button>
-                        <button type="button" class="aa-btn-compact" data-aa="K">K</button>
-                        <button type="button" class="aa-btn-compact" data-aa="M">M</button>
-                        <button type="button" class="aa-btn-compact" data-aa="F">F</button>
-                        <button type="button" class="aa-btn-compact" data-aa="P">P</button>
-                        <button type="button" class="aa-btn-compact" data-aa="S">S</button>
-                        <button type="button" class="aa-btn-compact" data-aa="T">T</button>
-                        <button type="button" class="aa-btn-compact" data-aa="W">W</button>
-                        <button type="button" class="aa-btn-compact" data-aa="Y">Y</button>
-                        <button type="button" class="aa-btn-compact" data-aa="V">V</button>
-                    </div>
-                </div>
-                
                 <div class="filter-actions">
                     <button class="btn-primary" onclick="applyAllFilters()" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Apply Filters</button>
                     <button class="btn-secondary" onclick="resetAllFilters()" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Reset</button>
@@ -260,7 +193,7 @@
         <div class="results-header">
             <div class="results-count" id="resultsCount">Found peptides: 0</div>
             <div class="results-actions">
-                <button class="download-btn" onclick="downloadResults()">📥 Download Results (CSV)</button>
+                <button class="download-btn" onclick="downloadResults()">Download Results (CSV)</button>
                 <div class="view-toggle">
                     <button class="toggle-btn active" onclick="setView('table')">Table</button>
                     <button class="toggle-btn" onclick="setView('card')">Cards</button>

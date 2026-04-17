@@ -9,7 +9,6 @@ let currentView = 'table';
 let sortColumn = 'peptide_name';
 let sortDirection = 'asc';
 let filteredPeptides = [];
-let selectedAAs = [];
 
 // Chart instances
 let lengthChart = null;
@@ -137,7 +136,13 @@ function processAllData() {
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
             if (modVal && modVal !== 'N/A' && modVal !== '') {
-                allMods.push(modVal);
+                // Split by comma to get individual modifications
+                var parts = modVal.split(',').map(function(item) { return item.trim(); });
+                for (var k = 0; k < parts.length; k++) {
+                    if (parts[k] && allMods.indexOf(parts[k]) === -1) {
+                        allMods.push(parts[k]);
+                    }
+                }
             }
         }
         
@@ -357,13 +362,11 @@ function initBrowsePage() {
     updateBrowseStats();
     displayBrowseResults();
     setupBrowseEventListeners();
-    initAASelector();
-    initStructureSelector();
     initModificationSelector();
 }
 
 function setupBrowseEventListeners() {
-    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'structureFilter', 'modFilter'];
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'modFilter', 'disulfideFilter'];
     for (var i = 0; i < inputs.length; i++) {
         var el = document.getElementById(inputs[i]);
         if (el) {
@@ -372,30 +375,6 @@ function setupBrowseEventListeners() {
                 el.addEventListener('keypress', function(e) { if (e.key === 'Enter') applyFilters(); });
             }
         }
-    }
-}
-
-function initStructureSelector() {
-    var structSelect = document.getElementById('structureFilter');
-    if (!structSelect) return;
-    
-    var structTypes = {};
-    for (var i = 0; i < peptidesData.length; i++) {
-        var st = peptidesData[i].structure_type;
-        if (st && st !== 'N/A' && st !== '') {
-            structTypes[st] = true;
-        }
-    }
-    
-    while (structSelect.options.length > 1) {
-        structSelect.remove(1);
-    }
-    
-    for (var type in structTypes) {
-        var option = document.createElement('option');
-        option.value = type;
-        option.textContent = type;
-        structSelect.appendChild(option);
     }
 }
 
@@ -418,10 +397,11 @@ function initModificationSelector() {
         modSelect.remove(1);
     }
     
-    for (var type in modTypes) {
+    var sortedTypes = Object.keys(modTypes).sort();
+    for (var k = 0; k < sortedTypes.length; k++) {
         var option = document.createElement('option');
-        option.value = type;
-        option.textContent = type;
+        option.value = sortedTypes[k];
+        option.textContent = sortedTypes[k];
         modSelect.appendChild(option);
     }
 }
@@ -431,48 +411,17 @@ function updateBrowseStats() {
     if (el) el.textContent = 'Found peptides: ' + filteredPeptides.length;
 }
 
-function initAASelector() {
-    var btns = document.querySelectorAll('.aa-btn-compact');
-    for (var i = 0; i < btns.length; i++) {
-        btns[i].addEventListener('click', function() {
-            var aa = this.getAttribute('data-aa');
-            if (this.classList.contains('selected')) {
-                this.classList.remove('selected');
-                var newSel = [];
-                for (var j = 0; j < selectedAAs.length; j++) {
-                    if (selectedAAs[j] !== aa) newSel.push(selectedAAs[j]);
-                }
-                selectedAAs = newSel;
-            } else {
-                this.classList.add('selected');
-                selectedAAs.push(aa);
-            }
-            applyFilters();
-        });
-    }
-}
-
-function containsAllAAs(seq, required) {
-    if (!required || required.length === 0) return true;
-    for (var i = 0; i < required.length; i++) {
-        if (seq.indexOf(required[i]) === -1) return false;
-    }
-    return true;
-}
-
 function checkModification(peptide, modType) {
     if (modType === 'all' || !modType) return true;
     var mods = peptide.modifications || [];
-    for (var i = 0; i < mods.length; i++) {
-        if (mods[i] === modType) return true;
-    }
-    return false;
+    // Check if the peptide has this specific modification
+    return mods.indexOf(modType) !== -1;
 }
 
 function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
-    var structType = document.getElementById('structureFilter') ? document.getElementById('structureFilter').value : 'all';
     var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
+    var disulfideVal = document.getElementById('disulfideFilter') ? document.getElementById('disulfideFilter').value : 'all';
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
     var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
     
@@ -489,9 +438,9 @@ function applyFilters() {
         
         if (p.length < minLen || p.length > maxLen) continue;
         
-        if (structType !== 'all' && p.structure_type !== structType) continue;
-        
-        if (selectedAAs.length > 0 && !containsAllAAs(p.sequence_clean || '', selectedAAs)) continue;
+        // Disulfide filter
+        if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
+        if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
         if (!checkModification(p, modType)) continue;
         
@@ -507,18 +456,14 @@ function resetFilters() {
     var searchInput = document.getElementById('searchInput');
     var lengthMin = document.getElementById('lengthMin');
     var lengthMax = document.getElementById('lengthMax');
-    var structureFilter = document.getElementById('structureFilter');
     var modFilter = document.getElementById('modFilter');
+    var disulfideFilter = document.getElementById('disulfideFilter');
     
     if (searchInput) searchInput.value = '';
     if (lengthMin) lengthMin.value = 0;
     if (lengthMax) lengthMax.value = 100;
-    if (structureFilter) structureFilter.value = 'all';
     if (modFilter) modFilter.value = 'all';
-    
-    selectedAAs = [];
-    var btns = document.querySelectorAll('.aa-btn-compact');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('selected');
+    if (disulfideFilter) disulfideFilter.value = 'all';
     
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
@@ -693,10 +638,10 @@ function initPeptidePage() {
 function formatSequenceWithMods(seq) {
     if (!seq) return 'N/A';
     return seq
-        .replace(/\(Me2\)/g, '<span class="modification" title="Dimethylated">(Me₂)</span>')
+        .replace(/\(Me2\)/g, '<span class="modification" title="Dimethylated">(Me2)</span>')
         .replace(/\(D\)/g, '<span class="modification" title="D-amino acid">(D)</span>')
         .replace(/\(NMe\)/g, '<span class="modification" title="N-methylated">(N-Me)</span>')
-        .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH₂</span>');
+        .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH2</span>');
 }
 
 function displayFullPeptideDetail(peptide) {
