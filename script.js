@@ -934,16 +934,17 @@ function displayBrowseResults() {
 
 function displayTableView(container) {
     var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
-        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 800px;">' +
+        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 1000px;">' +
             '<thead>' +
                 '<tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 14%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 30%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 6%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;">Modifications</th>' +
                     '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th style="padding: 12px 8px; text-align: center; width: 6%; cursor: pointer;" onclick="sortBy(\'has_pdb\')">PDB</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 7%;">Details</th>' +
+                    '<th style="padding: 12px 8px; text-align: center; width: 5%; cursor: pointer;" onclick="sortBy(\'has_pdb\')">PDB</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 6%;">Details</th>' +
                 '</tr>' +
             '</thead>' +
             '<tbody>';
@@ -951,15 +952,28 @@ function displayTableView(container) {
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
         var seqShort = p.sequence_one_letter ? 
-            (p.sequence_one_letter.length > 40 ? p.sequence_one_letter.substring(0,40) + '...' : p.sequence_one_letter) : 'N/A';
+            (p.sequence_one_letter.length > 35 ? p.sequence_one_letter.substring(0,35) + '...' : p.sequence_one_letter) : 'N/A';
         var url = getPeptideUrl(p.id, p.peptide_name);
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
+        
+        // Формируем строку с модификациями
+        var modsDisplay = '';
+        if (p.modifications && p.modifications.length > 0) {
+            var modShort = p.modifications.slice(0, 3).join(', ');
+            if (p.modifications.length > 3) {
+                modShort += ' +' + (p.modifications.length - 3);
+            }
+            modsDisplay = '<span style="font-size: 0.65rem; color: #d69e2e;" title="' + p.modifications.join(', ') + '">' + modShort + '</span>';
+        } else {
+            modsDisplay = '<span style="color: #a0aec0; font-size: 0.65rem;">—</span>';
+        }
         
         html += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
             '<td style="padding: 10px 8px; word-break: break-word;"><a href="' + url + '" style="color:#2c5282; font-weight:bold; text-decoration:none;">' + (p.peptide_name || 'N/A') + '</a></td>' +
             '<td style="padding: 10px 8px; font-family: monospace; font-size: 0.7rem; word-break: break-all;">' + seqShort + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.length || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px;">' + modsDisplay + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.source_organism || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px; text-align: center;">' + pdbBadge + '</td>' +
             '<td style="padding: 10px 8px;"><a href="' + url + '" class="btn-primary" style="display: inline-block; padding: 4px 10px; background: #4299e1; color: white; border-radius: 4px; text-decoration: none; font-size: 0.7rem;">View</a></td>' +
@@ -977,12 +991,23 @@ function displayCardView(container) {
         var url = getPeptideUrl(p.id, p.peptide_name);
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; margin-left: 0.5rem;">PDB</span>' : '';
         
+        // Формируем строку с модификациями для карточки
+        var modsDisplay = '';
+        if (p.modifications && p.modifications.length > 0) {
+            var modShort = p.modifications.slice(0, 2).join(', ');
+            if (p.modifications.length > 2) {
+                modShort += ' +' + (p.modifications.length - 2);
+            }
+            modsDisplay = '<div class="card-row"><div class="card-label">Modifications:</div><div class="card-value" style="color: #d69e2e;" title="' + p.modifications.join(', ') + '">' + modShort + '</div></div>';
+        }
+        
         html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
             '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + pdbBadge + '</h3></div>' +
             '<div class="card-content">' +
                 '<div class="card-row"><div class="card-label">Source:</div><div class="card-value">' + (p.source_organism || 'N/A') + '</div></div>' +
                 '<div class="card-row"><div class="card-label">Length:</div><div class="card-value">' + (p.length || 'N/A') + ' aa</div></div>' +
                 '<div class="card-row"><div class="card-label">MW:</div><div class="card-value">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + ' Da</div></div>' +
+                modsDisplay +
             '</div>' +
         '</div>';
     }
