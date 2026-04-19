@@ -1043,19 +1043,42 @@ async function initPeptidePage() {
     
     document.title = peptide.peptide_name + ' - BarrPeps';
     
-    var pdbContent = null;
-    var pdbId = null;
+    // Загружаем все PDB структуры
+    var pdbContents = [];
+    var pdbIds = [];
+    
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
-        pdbId = peptide.pdb_ids[0];
-        pdbContent = await fetchPDBStructure(pdbId);
-        window.pdbContentCache = pdbContent;
+        for (var i = 0; i < peptide.pdb_ids.length; i++) {
+            var pdbId = peptide.pdb_ids[i];
+            var content = await fetchPDBStructure(pdbId);
+            if (content) {
+                pdbContents.push(content);
+                pdbIds.push(pdbId);
+            }
+        }
+        console.log('Loaded ' + pdbContents.length + ' PDB structures');
     }
     
-    displayPeptideDetail(peptide, pdbContent, pdbId);
+    displayPeptideDetail(peptide, pdbContents, pdbIds);
 }
 
-function displayPeptideDetail(peptide, pdbContent, pdbId) {
-    var hasPDB = pdbContent !== null;
+function displayPeptideDetail(peptide, pdbContents, pdbIds) {
+    // pdbContents и pdbIds теперь могут быть массивами
+    var pdbContentsArray = Array.isArray(pdbContents) ? pdbContents : (pdbContents ? [pdbContents] : []);
+    var pdbIdsArray = Array.isArray(pdbIds) ? pdbIds : (pdbIds ? [pdbIds] : []);
+    
+    // Фильтруем только валидные структуры
+    var validStructures = [];
+    for (var i = 0; i < pdbIdsArray.length; i++) {
+        if (pdbContentsArray[i] && pdbIdsArray[i]) {
+            validStructures.push({
+                id: pdbIdsArray[i],
+                content: pdbContentsArray[i]
+            });
+        }
+    }
+    
+    var hasPDB = validStructures.length > 0;
     
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
@@ -1181,10 +1204,25 @@ function displayPeptideDetail(peptide, pdbContent, pdbId) {
             '<p style="color:#718096;">ID: ' + peptide.id + '</p>' +
         '</div>';
     
-    // Structure Viewer
+    // Structure Viewer с выпадающим списком
     if (hasPDB) {
+        var pdbSelectorHtml = '';
+        if (validStructures.length > 1) {
+            pdbSelectorHtml = '<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">' +
+                '<h3 style="font-size: 0.9rem; margin: 0;">3D Structure Visualization</h3>' +
+                '<select id="pdbSelector" style="padding: 0.3rem 0.5rem; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.75rem; background: white; cursor: pointer;" onchange="switchPDB(this.value)">';
+            
+            for (var i = 0; i < validStructures.length; i++) {
+                var selected = i === 0 ? ' selected' : '';
+                pdbSelectorHtml += '<option value="' + i + '"' + selected + '>' + validStructures[i].id + '</option>';
+            }
+            pdbSelectorHtml += '</select></div>';
+        } else {
+            pdbSelectorHtml = '<h3 style="font-size: 0.9rem; margin-bottom: 0.6rem;">3D Structure Visualization - PDB: ' + validStructures[0].id + '</h3>';
+        }
+        
         html += '<div class="structure-viewer">' +
-            '<h3 style="font-size: 0.9rem; margin-bottom: 0.6rem;">3D Structure Visualization</h3>' +
+            pdbSelectorHtml +
             '<div id="structure-viewer-pdb" class="structure-container"></div>' +
             '<div class="structure-controls">' +
                 '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
@@ -1195,13 +1233,17 @@ function displayPeptideDetail(peptide, pdbContent, pdbId) {
                 '<div class="legend-item"><div class="legend-color oxygen"></div><span>Oxygen</span></div>' +
                 '<div class="legend-item"><div class="legend-color nitrogen"></div><span>Nitrogen</span></div>' +
                 '<div class="legend-item"><div class="legend-color sulfur"></div><span>Sulfur</span></div>' +
-                '<div class="legend-item"><div class="legend-color" style="background: #ffaa00;"></div><span>Disulfide</span></div>' +
+                '<div class="legend-item"><div class="legend-color disulfide"></div><span>Disulfide</span></div>' +
             '</div>' +
             '<div class="pdb-info">' +
-                '<strong>PDB ID: ' + pdbId + '</strong> | ' +
-                '<a href="https://www.rcsb.org/structure/' + pdbId + '" target="_blank">View on RCSB.org</a>' +
+                '<strong>Current PDB: <span id="currentPdbId">' + validStructures[0].id + '</span></strong> | ' +
+                '<a href="https://www.rcsb.org/structure/' + validStructures[0].id + '" target="_blank" id="rcsbLink">View on RCSB.org</a>' +
             '</div>' +
         '</div>';
+        
+        // Сохраняем структуры в глобальную переменную для переключения
+        window.pdbStructures = validStructures;
+        window.currentPdbIndex = 0;
     } else {
         html += '<div class="structure-viewer">' +
             '<h3 style="font-size: 0.9rem; margin-bottom: 0.6rem;">3D Structure Visualization</h3>' +
@@ -1240,12 +1282,34 @@ function displayPeptideDetail(peptide, pdbContent, pdbId) {
         detailContainer.innerHTML = html;
     }
     
-    if (hasPDB && pdbContent) {
+    if (hasPDB && validStructures.length > 0) {
         setTimeout(function() {
-            renderPDBStructure(pdbContent, pdbId);
+            renderPDBStructure(validStructures[0].content, validStructures[0].id);
         }, 100);
     }
 }
+
+// Функция для переключения PDB структуры
+function switchPDB(index) {
+    index = parseInt(index);
+    if (!window.pdbStructures || !window.pdbStructures[index]) return;
+    
+    var structure = window.pdbStructures[index];
+    window.currentPdbIndex = index;
+    window.pdbContentCache = structure.content;
+    
+    // Обновляем отображаемый PDB ID и ссылку
+    var pdbIdSpan = document.getElementById('currentPdbId');
+    var rcsbLink = document.getElementById('rcsbLink');
+    if (pdbIdSpan) pdbIdSpan.textContent = structure.id;
+    if (rcsbLink) rcsbLink.href = 'https://www.rcsb.org/structure/' + structure.id;
+    
+    // Перерисовываем структуру
+    renderPDBStructure(structure.content, structure.id);
+}
+
+// Добавляем функцию в глобальный scope
+window.switchPDB = switchPDB;
 
 // ========== EXPORTS ==========
 window.searchPeptides = applyFilters;
