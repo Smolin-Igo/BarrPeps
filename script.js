@@ -90,6 +90,7 @@ function useFallbackData() {
         { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", sequence_3: "ThrPhePheTyrGlyGlySerArgGlyLysArgAsnAsnPheLysThrGluGluTyr", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
         { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", sequence_3: "GlyIleValGluGlnCysCysThrSerIleCysSerLeuTyrGlnLeuGluAsnTyrCysAsn", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" }
     ];
+    pdbData = [];
     processAllData();
 }
 
@@ -135,6 +136,8 @@ function processAllData() {
         }
     }
     
+    console.log('PDB Map keys:', Object.keys(pdbMap).length);
+    
     // Build enhanced peptides
     var enhanced = [];
     for (var i = 0; i < peptidesData.length; i++) {
@@ -159,16 +162,41 @@ function processAllData() {
             }
         }
         
-        // Get PDB info
+        // Get PDB info - check both PDB_ID and Related_PDB fields
         var pdbInfo = pdbMap[pid] || [];
-        var hasPDB = pdbInfo.length > 0;
         var pdbIds = [];
         for (var j = 0; j < pdbInfo.length; j++) {
             var pdbId = pdbInfo[j]['PDB_ID'];
-            if (pdbId && pdbId !== 'Nah' && pdbId !== '') {
-                pdbIds.push(pdbId);
+            var relatedPdb = pdbInfo[j]['Related_PDB'];
+            
+            if (pdbId && pdbId !== 'Nah' && pdbId !== '' && pdbId !== 'N/A') {
+                // Split by comma if multiple IDs
+                var ids = pdbId.split(',').map(function(id) { return id.trim(); });
+                for (var k = 0; k < ids.length; k++) {
+                    if (ids[k] && ids[k] !== 'Nah' && ids[k] !== 'N/A') {
+                        pdbIds.push(ids[k]);
+                    }
+                }
+            }
+            if (relatedPdb && relatedPdb !== 'Nah' && relatedPdb !== '') {
+                var relIds = relatedPdb.split(',').map(function(id) { return id.trim(); });
+                for (var k = 0; k < relIds.length; k++) {
+                    if (relIds[k] && relIds[k] !== 'Nah') {
+                        pdbIds.push(relIds[k]);
+                    }
+                }
             }
         }
+        
+        // Remove duplicates
+        var uniquePdbIds = [];
+        for (var j = 0; j < pdbIds.length; j++) {
+            if (uniquePdbIds.indexOf(pdbIds[j]) === -1) {
+                uniquePdbIds.push(pdbIds[j]);
+            }
+        }
+        
+        var hasPDB = uniquePdbIds.length > 0;
         
         enhanced.push({
             id: pid,
@@ -186,7 +214,7 @@ function processAllData() {
             experiments: experimentsMap[pid] || [],
             references: referencesMap[pid] || [],
             modifications: allMods,
-            pdb_ids: pdbIds,
+            pdb_ids: uniquePdbIds,
             has_pdb: hasPDB,
             notes: p['notes'] || ''
         });
@@ -194,7 +222,13 @@ function processAllData() {
     
     peptidesData = enhanced;
     filteredPeptides = [...peptidesData];
-    console.log('Processed', peptidesData.length, 'peptides');
+    
+    // Count how many have PDB
+    var pdbCount = 0;
+    for (var i = 0; i < peptidesData.length; i++) {
+        if (peptidesData[i].has_pdb) pdbCount++;
+    }
+    console.log('Processed', peptidesData.length, 'peptides,', pdbCount, 'have PDB structures');
     
     var currentPage = window.location.pathname.split('/').pop();
     if (currentPage === 'index.html' || currentPage === '') {
@@ -468,7 +502,7 @@ function applyFilters() {
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
-        // PDB filter
+        // PDB filter - исправлено!
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
@@ -511,13 +545,8 @@ function downloadFASTA() {
     var fasta = '';
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
+        // Только название пептида
         var header = '>' + (p.peptide_name || 'peptide_' + p.id);
-        if (p.source_organism && p.source_organism !== 'N/A') {
-            header += ' [' + p.source_organism + ']';
-        }
-        if (p.length) {
-            header += ' length=' + p.length;
-        }
         fasta += header + '\n';
         
         // Format sequence in lines of 60 characters
@@ -681,15 +710,15 @@ function displayBrowseResults() {
 }
 
 function displayTableView(container) {
+    // Убрана колонка Structure
     var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
-        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 900px;">' +
+        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 800px;">' +
             '<thead>' +
                 '<tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 35%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 7%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 14%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
                     '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
                     '<th style="padding: 12px 8px; text-align: center; width: 6%; cursor: pointer;" onclick="sortBy(\'has_pdb\')">PDB</th>' +
                     '<th style="padding: 12px 8px; text-align: left; width: 7%;">Details</th>' +
@@ -700,7 +729,7 @@ function displayTableView(container) {
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
         var seqShort = p.sequence_one_letter ? 
-            (p.sequence_one_letter.length > 35 ? p.sequence_one_letter.substring(0,35) + '...' : p.sequence_one_letter) : 'N/A';
+            (p.sequence_one_letter.length > 40 ? p.sequence_one_letter.substring(0,40) + '...' : p.sequence_one_letter) : 'N/A';
         var url = getPeptideUrl(p.id, p.peptide_name);
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
         
@@ -709,7 +738,6 @@ function displayTableView(container) {
             '<td style="padding: 10px 8px; font-family: monospace; font-size: 0.7rem; word-break: break-all;">' + seqShort + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.length || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
-            '<td style="padding: 10px 8px;">' + (p.structure_type || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.source_organism || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px; text-align: center;">' + pdbBadge + '</td>' +
             '<td style="padding: 10px 8px;"><a href="' + url + '" class="btn-primary" style="display: inline-block; padding: 4px 10px; background: #4299e1; color: white; border-radius: 4px; text-decoration: none; font-size: 0.7rem;">View</a></td>' +
@@ -733,7 +761,6 @@ function displayCardView(container) {
                 '<div class="card-row"><div class="card-label">Source:</div><div class="card-value">' + (p.source_organism || 'N/A') + '</div></div>' +
                 '<div class="card-row"><div class="card-label">Length:</div><div class="card-value">' + (p.length || 'N/A') + ' aa</div></div>' +
                 '<div class="card-row"><div class="card-label">MW:</div><div class="card-value">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + ' Da</div></div>' +
-                '<div class="card-row"><div class="card-label">Structure:</div><div class="card-value">' + (p.structure_type || 'N/A') + '</div></div>' +
             '</div>' +
         '</div>';
     }
