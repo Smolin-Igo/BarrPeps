@@ -18,7 +18,7 @@
         
         .filters-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 0.75rem;
             margin-bottom: 0.75rem;
         }
@@ -77,12 +77,13 @@
         
         .results-actions {
             display: flex;
-            gap: 0.75rem;
+            gap: 0.5rem;
             align-items: center;
+            flex-wrap: wrap;
         }
         
-        .download-btn {
-            background: #48bb78;
+        .export-btn {
+            background: #4299e1;
             color: white;
             border: none;
             padding: 0.4rem 0.8rem;
@@ -93,8 +94,45 @@
             transition: all 0.2s;
         }
         
-        .download-btn:hover {
-            background: #38a169;
+        .export-btn.fasta {
+            background: #48bb78;
+        }
+        
+        .export-btn.csv {
+            background: #ed8936;
+        }
+        
+        .export-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .submit-banner {
+            background: #ebf8ff;
+            border: 1px solid #bee3f8;
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .submit-banner p {
+            color: #2c5282;
+            font-size: 0.8rem;
+            margin: 0;
+        }
+        
+        .submit-banner .btn-small {
+            background: #4299e1;
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.7rem;
+            font-weight: 600;
         }
         
         .modification {
@@ -121,9 +159,13 @@
                 font-size: 0.8rem;
             }
             
-            .download-btn {
+            .export-btn {
                 padding: 0.5rem 1rem;
                 font-size: 0.75rem;
+            }
+            
+            .submit-banner p {
+                font-size: 0.9rem;
             }
         }
     </style>
@@ -138,7 +180,7 @@
             <div class="nav-links">
                 <a href="index.html">Home</a>
                 <a href="browse.html" class="active">Browse Database</a>
-                <a href="#" onclick="showUnderConstruction()">Statistics</a>
+                <a href="submit.html">Submit Data</a>
             </div>
         </div>
     </nav>
@@ -147,6 +189,11 @@
         <div class="page-header">
             <h1>Browse Peptides</h1>
             <p>Explore the complete collection of peptides crossing the blood-brain barrier</p>
+        </div>
+
+        <div class="submit-banner">
+            <p><strong>Know a peptide that's missing?</strong> Help us improve the database by submitting new data.</p>
+            <a href="submit.html" class="btn-small">Submit Data →</a>
         </div>
 
         <div class="filters-panel">
@@ -180,6 +227,15 @@
                         <option value="no">No</option>
                     </select>
                 </div>
+                
+                <div class="filter-field">
+                    <label>PDB Structure</label>
+                    <select id="pdbFilter">
+                        <option value="all">All</option>
+                        <option value="yes">Has PDB</option>
+                        <option value="no">No PDB</option>
+                    </select>
+                </div>
             </div>
             
             <div class="filter-row">
@@ -193,7 +249,8 @@
         <div class="results-header">
             <div class="results-count" id="resultsCount">Found peptides: 0</div>
             <div class="results-actions">
-                <button class="download-btn" onclick="downloadResults()">Download Results (CSV)</button>
+                <button class="export-btn fasta" onclick="downloadFASTA()">Download FASTA</button>
+                <button class="export-btn csv" onclick="downloadFullCSV()">Download Full CSV</button>
                 <div class="view-toggle">
                     <button class="toggle-btn active" onclick="setView('table')">Table</button>
                     <button class="toggle-btn" onclick="setView('card')">Cards</button>
@@ -219,6 +276,7 @@
                 <h3>Quick Links</h3>
                 <a href="index.html">Home</a>
                 <a href="browse.html">Browse Database</a>
+                <a href="submit.html">Submit Data</a>
             </div>
             <div class="footer-section">
                 <h3>Data Sources</h3>
@@ -238,7 +296,7 @@
                 <span class="close" onclick="closeModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <p>This section is currently under development. Please check back soon for detailed statistics and analysis.</p>
+                <p>This section is currently under development. Please check back soon.</p>
                 <button onclick="closeModal()" class="btn-primary" style="margin-top: 1rem;">Close</button>
             </div>
         </div>

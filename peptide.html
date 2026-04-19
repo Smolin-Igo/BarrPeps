@@ -45,18 +45,6 @@
             background-color: #fbd38d;
         }
         
-        @media (min-width: 768px) {
-            .structure-container {
-                height: 320px;
-            }
-        }
-        
-        @media (min-width: 1024px) {
-            .structure-container {
-                height: 340px;
-            }
-        }
-        
         .back-button {
             display: inline-block;
             margin-bottom: 0.75rem;
@@ -64,11 +52,50 @@
             padding: 0.5rem 1rem;
         }
         
+        .suggest-edit-btn {
+            display: inline-block;
+            background: #ed8936;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+            transition: background 0.2s;
+        }
+        
+        .suggest-edit-btn:hover {
+            background: #dd6b20;
+        }
+        
+        .page-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
         @media (min-width: 768px) {
+            .structure-container {
+                height: 320px;
+            }
+            
             .back-button {
                 font-size: 1rem;
                 padding: 0.6rem 1.2rem;
                 margin-bottom: 1rem;
+            }
+            
+            .suggest-edit-btn {
+                font-size: 0.9rem;
+                padding: 0.6rem 1.2rem;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .structure-container {
+                height: 340px;
             }
         }
     </style>
@@ -83,6 +110,7 @@
             <div class="nav-links">
                 <a href="index.html">Home</a>
                 <a href="browse.html">Browse Database</a>
+                <a href="submit.html">Submit Data</a>
             </div>
         </div>
     </nav>
@@ -106,6 +134,7 @@
                 <h3>Quick Links</h3>
                 <a href="index.html">Home</a>
                 <a href="browse.html">Browse Database</a>
+                <a href="submit.html">Submit Data</a>
             </div>
             <div class="footer-section">
                 <h3>Data Sources</h3>
@@ -132,5 +161,39 @@
     </div>
 
     <script src="script.js"></script>
+    <script>
+        // Добавляем кнопку Suggest Edit после загрузки данных пептида
+        const originalInitPeptidePage = window.initPeptidePage;
+        window.initPeptidePage = function() {
+            if (originalInitPeptidePage) {
+                originalInitPeptidePage();
+            }
+            
+            // Добавляем кнопку Suggest Edit в заголовок
+            setTimeout(function() {
+                const container = document.querySelector('#peptideDetail > div');
+                if (container) {
+                    const headerDiv = container.querySelector('div[style*="margin-bottom:1rem"]');
+                    if (headerDiv) {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const peptideId = urlParams.get('id');
+                        const peptideName = urlParams.get('name') || '';
+                        
+                        const suggestBtn = document.createElement('a');
+                        suggestBtn.href = 'submit.html?type=update&id=' + peptideId + '&name=' + encodeURIComponent(peptideName);
+                        suggestBtn.className = 'suggest-edit-btn';
+                        suggestBtn.textContent = 'Suggest Edit';
+                        
+                        const title = headerDiv.querySelector('h1');
+                        if (title) {
+                            title.style.display = 'inline-block';
+                            title.style.marginRight = '1rem';
+                            headerDiv.insertBefore(suggestBtn, title.nextSibling);
+                        }
+                    }
+                }
+            }, 100);
+        };
+    </script>
 </body>
 </html>

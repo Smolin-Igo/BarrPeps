@@ -4,6 +4,7 @@ let peptidesData = [];
 let experimentsData = [];
 let referencesData = [];
 let modificationsData = [];
+let pdbData = [];
 
 let currentView = 'table';
 let sortColumn = 'peptide_name';
@@ -65,6 +66,9 @@ function loadExcelFile() {
                 } else if (lowerName === 'modifications') {
                     modificationsData = jsonData;
                     console.log('Modifications:', modificationsData.length);
+                } else if (lowerName === 'pdb') {
+                    pdbData = jsonData;
+                    console.log('PDB:', pdbData.length);
                 }
             }
             
@@ -121,6 +125,16 @@ function processAllData() {
         }
     }
     
+    var pdbMap = {};
+    for (var i = 0; i < pdbData.length; i++) {
+        var pdb = pdbData[i];
+        var pid = pdb['peptide_id'];
+        if (pid) {
+            if (!pdbMap[pid]) pdbMap[pid] = [];
+            pdbMap[pid].push(pdb);
+        }
+    }
+    
     // Build enhanced peptides
     var enhanced = [];
     for (var i = 0; i < peptidesData.length; i++) {
@@ -130,19 +144,29 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        // Get ALL modifications directly from modifications table - NO extra checks
+        // Get ALL modifications directly from modifications table
         var allMods = [];
         var modsForPeptide = modificationsMap[pid] || [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
             if (modVal && modVal !== 'N/A' && modVal !== '') {
-                // Split by comma to get individual modifications
                 var parts = modVal.split(',').map(function(item) { return item.trim(); });
                 for (var k = 0; k < parts.length; k++) {
                     if (parts[k] && allMods.indexOf(parts[k]) === -1) {
                         allMods.push(parts[k]);
                     }
                 }
+            }
+        }
+        
+        // Get PDB info
+        var pdbInfo = pdbMap[pid] || [];
+        var hasPDB = pdbInfo.length > 0;
+        var pdbIds = [];
+        for (var j = 0; j < pdbInfo.length; j++) {
+            var pdbId = pdbInfo[j]['PDB_ID'];
+            if (pdbId && pdbId !== 'Nah' && pdbId !== '') {
+                pdbIds.push(pdbId);
             }
         }
         
@@ -162,6 +186,8 @@ function processAllData() {
             experiments: experimentsMap[pid] || [],
             references: referencesMap[pid] || [],
             modifications: allMods,
+            pdb_ids: pdbIds,
+            has_pdb: hasPDB,
             notes: p['notes'] || ''
         });
     }
@@ -366,7 +392,7 @@ function initBrowsePage() {
 }
 
 function setupBrowseEventListeners() {
-    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'modFilter', 'disulfideFilter'];
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'modFilter', 'disulfideFilter', 'pdbFilter'];
     for (var i = 0; i < inputs.length; i++) {
         var el = document.getElementById(inputs[i]);
         if (el) {
@@ -414,7 +440,6 @@ function updateBrowseStats() {
 function checkModification(peptide, modType) {
     if (modType === 'all' || !modType) return true;
     var mods = peptide.modifications || [];
-    // Check if the peptide has this specific modification
     return mods.indexOf(modType) !== -1;
 }
 
@@ -422,6 +447,7 @@ function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
     var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
     var disulfideVal = document.getElementById('disulfideFilter') ? document.getElementById('disulfideFilter').value : 'all';
+    var pdbVal = document.getElementById('pdbFilter') ? document.getElementById('pdbFilter').value : 'all';
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
     var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
     
@@ -442,6 +468,10 @@ function applyFilters() {
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
+        // PDB filter
+        if (pdbVal === 'yes' && !p.has_pdb) continue;
+        if (pdbVal === 'no' && p.has_pdb) continue;
+        
         if (!checkModification(p, modType)) continue;
         
         result.push(p);
@@ -458,44 +488,178 @@ function resetFilters() {
     var lengthMax = document.getElementById('lengthMax');
     var modFilter = document.getElementById('modFilter');
     var disulfideFilter = document.getElementById('disulfideFilter');
+    var pdbFilter = document.getElementById('pdbFilter');
     
     if (searchInput) searchInput.value = '';
     if (lengthMin) lengthMin.value = 0;
     if (lengthMax) lengthMax.value = 100;
     if (modFilter) modFilter.value = 'all';
     if (disulfideFilter) disulfideFilter.value = 'all';
+    if (pdbFilter) pdbFilter.value = 'all';
     
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
     displayBrowseResults();
 }
 
-function downloadResults() {
+function downloadFASTA() {
     if (filteredPeptides.length === 0) {
         alert('No results to download');
         return;
     }
     
-    var headers = ['ID', 'Name', 'Sequence', 'Length', 'MW (Da)', 'Structure', 'Source'];
+    var fasta = '';
+    for (var i = 0; i < filteredPeptides.length; i++) {
+        var p = filteredPeptides[i];
+        var header = '>' + (p.peptide_name || 'peptide_' + p.id);
+        if (p.source_organism && p.source_organism !== 'N/A') {
+            header += ' [' + p.source_organism + ']';
+        }
+        if (p.length) {
+            header += ' length=' + p.length;
+        }
+        fasta += header + '\n';
+        
+        // Format sequence in lines of 60 characters
+        var seq = p.sequence_clean || '';
+        for (var j = 0; j < seq.length; j += 60) {
+            fasta += seq.substring(j, j + 60) + '\n';
+        }
+    }
+    
+    var blob = new Blob([fasta], { type: 'text/plain' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'barrpeps_sequences.fasta';
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function downloadFullCSV() {
+    if (filteredPeptides.length === 0) {
+        alert('No results to download');
+        return;
+    }
+    
+    // Collect all unique experiment response types for columns
+    var expTypes = {};
+    for (var i = 0; i < filteredPeptides.length; i++) {
+        var exps = filteredPeptides[i].experiments || [];
+        for (var j = 0; j < exps.length; j++) {
+            var exp = exps[j];
+            var method = exp['method'] || '';
+            var response = exp['response'] || '';
+            if (method && response) {
+                var key = method + '_' + response;
+                expTypes[key] = true;
+            }
+        }
+    }
+    
+    var headers = [
+        'ID', 'Name', 'Sequence_1letter', 'Sequence_3letter', 'Clean_Sequence',
+        'Length', 'Molecular_Weight', 'Molecular_Formula', 'Structure_Type',
+        'Disulfide_Bridges', 'Nature', 'Source_Organism', 'Modifications',
+        'PDB_IDs', 'Has_PDB'
+    ];
+    
+    // Add experiment columns
+    var expColumns = Object.keys(expTypes).sort();
+    for (var k = 0; k < expColumns.length; k++) {
+        headers.push(expColumns[k] + '_Result');
+        headers.push(expColumns[k] + '_Unit');
+        headers.push(expColumns[k] + '_Transport');
+    }
+    
+    // Add reference columns
+    headers.push('References');
+    
     var rows = [];
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
-        rows.push([p.id, p.peptide_name, p.sequence_one_letter, p.length, p.molecular_weight, p.structure_type, p.source_organism]);
+        
+        var row = [
+            p.id,
+            p.peptide_name || '',
+            p.sequence_one_letter || '',
+            p.sequence_three_letter || '',
+            p.sequence_clean || '',
+            p.length || '',
+            p.molecular_weight || '',
+            p.molecular_formula || '',
+            p.structure_type || '',
+            p.disulfide_bridge || '',
+            p.nature || '',
+            p.source_organism || '',
+            (p.modifications || []).join('; '),
+            (p.pdb_ids || []).join('; '),
+            p.has_pdb ? 'Yes' : 'No'
+        ];
+        
+        // Build experiment data map
+        var expMap = {};
+        var exps = p.experiments || [];
+        for (var j = 0; j < exps.length; j++) {
+            var exp = exps[j];
+            var method = exp['method'] || '';
+            var response = exp['response'] || '';
+            if (method && response) {
+                var key = method + '_' + response;
+                if (!expMap[key]) {
+                    expMap[key] = {
+                        result: exp['result'] || '',
+                        unit: exp['unit'] || '',
+                        transport: exp['transport_type'] || ''
+                    };
+                }
+            }
+        }
+        
+        // Add experiment values
+        for (var k = 0; k < expColumns.length; k++) {
+            var expKey = expColumns[k];
+            var expData = expMap[expKey] || { result: '', unit: '', transport: '' };
+            row.push(expData.result);
+            row.push(expData.unit);
+            row.push(expData.transport);
+        }
+        
+        // Build references string
+        var refs = p.references || [];
+        var refStrings = [];
+        for (var r = 0; r < refs.length; r++) {
+            var ref = refs[r];
+            var authors = ref['authors'] || '';
+            var year = ref['year'] || '';
+            var title = ref['title'] || '';
+            var journal = ref['journal'] || '';
+            if (authors && year) {
+                refStrings.push(authors + ' (' + year + ') ' + title + ' ' + journal);
+            }
+        }
+        row.push(refStrings.join(' | '));
+        
+        rows.push(row);
     }
     
-    var csv = headers.join(',') + '\n';
+    // Build CSV
+    var csv = headers.map(function(h) { return '"' + h.replace(/"/g, '""') + '"'; }).join(',') + '\n';
     for (var i = 0; i < rows.length; i++) {
-        var row = [];
-        for (var j = 0; j < rows[i].length; j++) {
-            row.push('"' + String(rows[i][j] || '').replace(/"/g, '""') + '"');
+        var row = rows[i];
+        var csvRow = [];
+        for (var j = 0; j < row.length; j++) {
+            var val = row[j];
+            if (val === null || val === undefined) val = '';
+            val = String(val).replace(/"/g, '""');
+            csvRow.push('"' + val + '"');
         }
-        csv += row.join(',') + '\n';
+        csv += csvRow.join(',') + '\n';
     }
     
     var blob = new Blob([csv], { type: 'text/csv' });
     var link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'barrpeps_export.csv';
+    link.download = 'barrpeps_full_export.csv';
     link.click();
     URL.revokeObjectURL(link.href);
 }
@@ -518,16 +682,17 @@ function displayBrowseResults() {
 
 function displayTableView(container) {
     var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
-        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 800px;">' +
+        '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 900px;">' +
             '<thead>' +
                 '<tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">' +
-                    '<th class="name-cell" style="padding: 12px 8px; text-align: left; width: 15%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
-                    '<th class="sequence-cell" style="padding: 12px 8px; text-align: left; width: 40%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
-                    '<th class="length-cell" style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
-                    '<th class="mw-cell" style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
-                    '<th class="structure-cell" style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
-                    '<th class="source-cell" style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
-                    '<th class="details-cell" style="padding: 12px 8px; text-align: left; width: 5%;">Details</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 12%; cursor: pointer;" onclick="sortBy(\'peptide_name\')">Name</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 35%; cursor: pointer;" onclick="sortBy(\'sequence_one_letter\')">Sequence</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 7%; cursor: pointer;" onclick="sortBy(\'length\')">Length</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'molecular_weight\')">MW (Da)</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 8%; cursor: pointer;" onclick="sortBy(\'structure_type\')">Structure</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 10%; cursor: pointer;" onclick="sortBy(\'source_organism\')">Source</th>' +
+                    '<th style="padding: 12px 8px; text-align: center; width: 6%; cursor: pointer;" onclick="sortBy(\'has_pdb\')">PDB</th>' +
+                    '<th style="padding: 12px 8px; text-align: left; width: 7%;">Details</th>' +
                 '</tr>' +
             '</thead>' +
             '<tbody>';
@@ -535,8 +700,9 @@ function displayTableView(container) {
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
         var seqShort = p.sequence_one_letter ? 
-            (p.sequence_one_letter.length > 40 ? p.sequence_one_letter.substring(0,40) + '...' : p.sequence_one_letter) : 'N/A';
+            (p.sequence_one_letter.length > 35 ? p.sequence_one_letter.substring(0,35) + '...' : p.sequence_one_letter) : 'N/A';
         var url = getPeptideUrl(p.id, p.peptide_name);
+        var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
         
         html += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
             '<td style="padding: 10px 8px; word-break: break-word;"><a href="' + url + '" style="color:#2c5282; font-weight:bold; text-decoration:none;">' + (p.peptide_name || 'N/A') + '</a></td>' +
@@ -545,13 +711,12 @@ function displayTableView(container) {
             '<td style="padding: 10px 8px;">' + (p.molecular_weight ? p.molecular_weight.toFixed(1) : 'N/A') + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.structure_type || 'N/A') + '</td>' +
             '<td style="padding: 10px 8px;">' + (p.source_organism || 'N/A') + '</td>' +
+            '<td style="padding: 10px 8px; text-align: center;">' + pdbBadge + '</td>' +
             '<td style="padding: 10px 8px;"><a href="' + url + '" class="btn-primary" style="display: inline-block; padding: 4px 10px; background: #4299e1; color: white; border-radius: 4px; text-decoration: none; font-size: 0.7rem;">View</a></td>' +
         '</tr>';
     }
     
-    html += '</tbody>' +
-        '</table>' +
-    '</div>';
+    html += '</tbody></table></div>';
     container.innerHTML = html;
 }
 
@@ -560,8 +725,10 @@ function displayCardView(container) {
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
         var url = getPeptideUrl(p.id, p.peptide_name);
+        var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; margin-left: 0.5rem;">PDB</span>' : '';
+        
         html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
-            '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + '</h3></div>' +
+            '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + pdbBadge + '</h3></div>' +
             '<div class="card-content">' +
                 '<div class="card-row"><div class="card-label">Source:</div><div class="card-value">' + (p.source_organism || 'N/A') + '</div></div>' +
                 '<div class="card-row"><div class="card-label">Length:</div><div class="card-value">' + (p.length || 'N/A') + ' aa</div></div>' +
@@ -645,35 +812,39 @@ function formatSequenceWithMods(seq) {
 }
 
 function displayFullPeptideDetail(peptide) {
-    // Modifications - DIRECT from database
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
         var modList = peptide.modifications.join(', ');
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">' + modList + '</span></div>' +
-            '</div>';
+            '<div class="detail-row"><span class="detail-value">' + modList + '</span></div></div>';
     } else {
         modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">None reported</span></div>' +
-            '</div>';
+            '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
     }
     
-    // Experiments as TABLE - with duplicate removal
+    // PDB section
+    var pdbHtml = '';
+    if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
+        var pdbLinks = [];
+        for (var i = 0; i < peptide.pdb_ids.length; i++) {
+            var pdbId = peptide.pdb_ids[i];
+            pdbLinks.push('<a href="https://www.rcsb.org/structure/' + pdbId + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + pdbId + '</a>');
+        }
+        pdbHtml = '<div class="detail-section"><h3>PDB Structures</h3>' +
+            '<div class="detail-row"><span class="detail-value">' + pdbLinks.join(', ') + '</span></div></div>';
+    }
+    
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
-        // Create a map to remove duplicates based on key fields
         var uniqueExperiments = [];
         var seenKeys = {};
         
         for (var i = 0; i < peptide.experiments.length; i++) {
             var exp = peptide.experiments[i];
-            
-            // Create a unique key based on method, response, and result
             var method = exp['method'] || '';
             var response = exp['response'] || '';
             var result = exp['result'] !== undefined && exp['result'] !== null ? exp['result'] : '';
             var unit = exp['unit'] || '';
-            
             var key = method + '|' + response + '|' + result + '|' + unit;
             
             if (!seenKeys[key]) {
@@ -685,31 +856,26 @@ function displayFullPeptideDetail(peptide) {
         experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
             '<div class="table-wrapper" style="overflow-x: auto;">' +
             '<table style="width:100%; border-collapse: collapse; font-size: 0.75rem;">' +
-            '<thead>' +
-            '<tr style="background: #e2e8f0;">' +
+            '<thead><tr style="background: #e2e8f0;">' +
             '<th style="padding: 8px; text-align: left;">Method</th>' +
             '<th style="padding: 8px; text-align: left;">Type</th>' +
             '<th style="padding: 8px; text-align: left;">Response</th>' +
             '<th style="padding: 8px; text-align: left;">Result</th>' +
             '<th style="padding: 8px; text-align: left;">Transport</th>' +
             '<th style="padding: 8px; text-align: left;">Model/Cell Line</th>' +
-            '</tr>' +
-            '</thead>' +
-            '<tbody>';
+            '</tr></thead><tbody>';
         
         for (var i = 0; i < uniqueExperiments.length; i++) {
             var exp = uniqueExperiments[i];
             var resultVal = exp['result'] !== undefined && exp['result'] !== null ? exp['result'] : '';
             var unit = exp['unit'] || '';
             var resultDisplay = (resultVal !== '' && resultVal !== null) ? resultVal + (unit ? ' ' + unit : '') : 'N/A';
-            
             var modelDisplay = exp['cell_line'] || exp['animal_model'] || 'N/A';
             var methodDisplay = exp['method'] || 'N/A';
             var typeDisplay = exp['method_type'] || 'N/A';
             var responseDisplay = exp['response'] || 'N/A';
             var transportDisplay = exp['transport_type'] || 'N/A';
             
-            // Skip completely empty rows
             if (methodDisplay === 'N/A' && typeDisplay === 'N/A' && responseDisplay === 'N/A' && 
                 resultDisplay === 'N/A' && transportDisplay === 'N/A' && modelDisplay === 'N/A') {
                 continue;
@@ -727,7 +893,6 @@ function displayFullPeptideDetail(peptide) {
         
         experimentsHtml += '</tbody></table></div></div>';
         
-        // If after filtering there are no rows, show message
         if (experimentsHtml.indexOf('<tr') === -1 || experimentsHtml.indexOf('</td>') === experimentsHtml.lastIndexOf('</table>') - 6) {
             experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
                 '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
@@ -737,7 +902,6 @@ function displayFullPeptideDetail(peptide) {
             '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
-    // References
     var referencesHtml = '';
     if (peptide.references && peptide.references.length > 0) {
         referencesHtml = '<div class="detail-section"><h3>References</h3>';
@@ -793,14 +957,10 @@ function displayFullPeptideDetail(peptide) {
                 '<div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">' + peptide.source_organism + '</span></div>' +
             '</div>' : '') +
         
+        pdbHtml +
         modsHtml +
         experimentsHtml +
         referencesHtml +
-        
-        (peptide.notes ? 
-            '<div class="detail-section"><h3>Notes</h3>' +
-                '<div class="detail-row"><span class="detail-value">' + peptide.notes + '</span></div>' +
-            '</div>' : '') +
     '</div>';
     
     document.getElementById('peptideDetail').innerHTML = html;
@@ -813,7 +973,8 @@ window.setView = setView;
 window.sortBy = sortBy;
 window.applyAllFilters = applyFilters;
 window.resetAllFilters = resetFilters;
-window.downloadResults = downloadResults;
+window.downloadFASTA = downloadFASTA;
+window.downloadFullCSV = downloadFullCSV;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 

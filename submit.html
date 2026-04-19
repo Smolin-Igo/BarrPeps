@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Submit Data - BarrPeps Database</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .submit-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .form-section {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .form-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .form-section h2 {
+            color: #2c5282;
+            font-size: 1.2rem;
+            margin-bottom: 1.2rem;
+            font-weight: 600;
+        }
+        
+        .form-section h3 {
+            color: #4a5568;
+            font-size: 0.95rem;
+            margin: 1rem 0 0.75rem 0;
+            font-weight: 600;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        
+        .form-group label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #4a5568;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 0.5rem 0.7rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            background: white;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66,153,225,0.1);
+        }
+        
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        .form-group small {
+            font-size: 0.65rem;
+            color: #718096;
+            margin-top: 0.2rem;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.3rem;
+        }
+        
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .radio-option input[type="radio"] {
+            width: auto;
+            margin: 0;
+        }
+        
+        .radio-option label {
+            font-size: 0.85rem;
+            text-transform: none;
+            font-weight: normal;
+            cursor: pointer;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        
+        .checkbox-group label {
+            text-transform: none;
+            font-weight: normal;
+            font-size: 0.8rem;
+        }
+        
+        .required::after {
+            content: " *";
+            color: #e53e3e;
+        }
+        
+        .optional::after {
+            content: " (optional)";
+            color: #718096;
+            font-weight: normal;
+            text-transform: none;
+            font-size: 0.65rem;
+        }
+        
+        .info-box {
+            background: #fef3c7;
+            border-left: 4px solid #f6ad55;
+            padding: 1rem 1.2rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .info-box p {
+            color: #744210;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin: 0;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        .btn-disabled {
+            background: #a0aec0;
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .coming-soon-badge {
+            display: inline-block;
+            background: #ed8936;
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+        
+        @media (min-width: 768px) {
+            .form-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .form-row.full-width {
+                grid-template-columns: 1fr;
+            }
+            
+            .submit-container {
+                padding: 2rem;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .submit-container {
+                padding: 2.5rem;
+            }
+            
+            .form-section h2 {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand" style="text-decoration: none;">
+                <h1>BarrPeps</h1>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </a>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+                <a href="submit.html" class="active">Submit Data</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="page-header">
+            <h1>Submit New Data</h1>
+            <p>Contribute to the BarrPeps database by submitting new peptide information</p>
+        </div>
+
+        <div class="submit-container">
+            <div class="info-box">
+                <p><strong>⚠️ Submission form preview</strong><br>
+                This is a preview of the submission form. The submit functionality will be available soon. 
+                In the meantime, you can email your data directly to: <strong>submit@barrpeps.org</strong></p>
+            </div>
+
+            <form onsubmit="return false;">
+                
+                <!-- Submission Type -->
+                <div class="form-section">
+                    <h2>Submission Type</h2>
+                    <div class="form-group">
+                        <label class="required">What would you like to do?</label>
+                        <div class="radio-group">
+                            <div class="radio-option">
+                                <input type="radio" id="typeNew" name="submissionType" value="new" checked>
+                                <label for="typeNew">Add a new peptide</label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" id="typeUpdate" name="submissionType" value="update">
+                                <label for="typeUpdate">Update existing peptide</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="existingPeptideSection" style="display: none;">
+                        <div class="form-group">
+                            <label class="required">Peptide to Update</label>
+                            <input type="text" id="existingPeptide" name="existingPeptide" placeholder="Enter peptide name or ID...">
+                            <small>Specify which peptide you want to update</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Basic Information -->
+                <div class="form-section">
+                    <h2>Basic Information</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="required">Peptide Name</label>
+                            <input type="text" id="peptideName" name="peptideName" placeholder="e.g., Angiopep-2" required>
+                            <small>Common or trivial name of the peptide</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Alternative Names</label>
+                            <input type="text" name="altNames" placeholder="e.g., ANG1005, GRN1005">
+                            <small>Separate multiple names with commas</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="required">Sequence (1-letter code)</label>
+                            <textarea name="sequence1" placeholder="e.g., TFFYGGSRGKRNNFKTEEY" required></textarea>
+                            <small>Include modifications in parentheses, e.g., (D)Ala, (NMe)Phe, -NH2</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Sequence (3-letter code)</label>
+                            <textarea name="sequence3" placeholder="e.g., Thr-Phe-Phe-Tyr-Gly-Gly-Ser-Arg-Gly-Lys-Arg-Asn-Asn-Phe-Lys-Thr-Glu-Glu-Tyr"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Length</label>
+                            <input type="number" name="length" placeholder="Number of amino acids">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Molecular Weight (Da)</label>
+                            <input type="number" step="0.01" name="molecularWeight" placeholder="e.g., 2302.53">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Molecular Formula</label>
+                            <input type="text" name="molecularFormula" placeholder="e.g., C104H150N29O31">
+                        </div>
+                        <div class="form-group">
+                            <label class="required">Source/Origin</label>
+                            <select name="origin" required>
+                                <option value="">-- Select --</option>
+                                <option value="synthetic">Synthetic</option>
+                                <option value="human">Human</option>
+                                <option value="mouse">Mouse</option>
+                                <option value="rat">Rat</option>
+                                <option value="bovine">Bovine</option>
+                                <option value="porcine">Porcine</option>
+                                <option value="viral">Viral</option>
+                                <option value="bacterial">Bacterial</option>
+                                <option value="plant">Plant</option>
+                                <option value="frog">Frog</option>
+                                <option value="insect">Insect</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Structural Properties -->
+                <div class="form-section">
+                    <h2>Structural Properties</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Conformation</label>
+                            <select name="conformation">
+                                <option value="">-- Select --</option>
+                                <option value="Linear">Linear</option>
+                                <option value="Cyclic">Cyclic</option>
+                                <option value="Bicyclic">Bicyclic</option>
+                                <option value="alpha-helix">Alpha-helix</option>
+                                <option value="beta-sheet">Beta-sheet</option>
+                                <option value="random coil">Random coil</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Nature</label>
+                            <select name="nature">
+                                <option value="">-- Select --</option>
+                                <option value="Cationic">Cationic</option>
+                                <option value="Anionic">Anionic</option>
+                                <option value="Neutral">Neutral</option>
+                                <option value="Amphipathic">Amphipathic</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Disulfide Bridges</label>
+                            <input type="text" name="disulfideBridges" placeholder="e.g., Cys2-Cys7, Cys1-Cys15">
+                            <small>Specify positions of disulfide bonds</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="optional">Modifications</label>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.4rem; margin-top: 0.3rem;">
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Amidation"> Amidation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Acetylation"> Acetylation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Methylation"> Methylation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Glycosylation"> Glycosylation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Phosphorylation"> Phosphorylation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Lipidation"> Lipidation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Cyclization"> Cyclization
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="D-amino acids"> D-amino acids
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Halogenation"> Halogenation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="PEGylation"> PEGylation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Conjugation"> Conjugation
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="checkbox" name="modifications" value="Oxidation"> Oxidation
+                            </label>
+                        </div>
+                        <small>Check all that apply</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="optional">Other Modifications</label>
+                        <input type="text" name="otherModifications" placeholder="Specify any other modifications...">
+                    </div>
+                </div>
+
+                <!-- Experimental Data -->
+                <div class="form-section">
+                    <h2>Experimental Data</h2>
+                    <h3>BBB Permeability <span class="coming-soon-badge">Optional</span></h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Method</label>
+                            <input type="text" name="experimentMethod" placeholder="e.g., In situ brain perfusion">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Method Type</label>
+                            <select name="methodType">
+                                <option value="">-- Select --</option>
+                                <option value="in_vivo">In Vivo</option>
+                                <option value="in_vitro">In Vitro</option>
+                                <option value="in_situ">In Situ</option>
+                                <option value="ex_vivo">Ex Vivo</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Response Parameter</label>
+                            <input type="text" name="response" placeholder="e.g., Kin, Papp, % injected dose">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Result Value</label>
+                            <input type="text" name="resultValue" placeholder="e.g., 0.00234">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Unit</label>
+                            <input type="text" name="unit" placeholder="e.g., mL/(g x min), cm/s">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Transport Type</label>
+                            <select name="transportType">
+                                <option value="">-- Select --</option>
+                                <option value="Passive diffusion">Passive diffusion</option>
+                                <option value="Carrier-mediated">Carrier-mediated</option>
+                                <option value="Receptor-mediated">Receptor-mediated</option>
+                                <option value="Adsorptive">Adsorptive</option>
+                                <option value="Saturable">Saturable</option>
+                                <option value="Non-saturable">Non-saturable</option>
+                                <option value="Paracellular">Paracellular</option>
+                                <option value="Transcytosis">Transcytosis</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Cell Line</label>
+                            <input type="text" name="cellLine" placeholder="e.g., hCMEC/D3, bEnd.3">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Animal Model</label>
+                            <input type="text" name="animalModel" placeholder="e.g., C57BL/6 mice, Sprague-Dawley rats">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Additional Notes</label>
+                            <textarea name="experimentNotes" rows="2" placeholder="Any additional experimental details, conditions, or observations..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- References -->
+                <div class="form-section">
+                    <h2>References</h2>
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Authors</label>
+                            <input type="text" name="authors" placeholder="e.g., Smith J., Doe A., Johnson M.">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Title</label>
+                            <input type="text" name="title" placeholder="Article title...">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Year</label>
+                            <input type="number" name="year" placeholder="e.g., 2024" min="1900" max="2026">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Journal</label>
+                            <input type="text" name="journal" placeholder="e.g., Journal of Neurochemistry">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">DOI or PMID</label>
+                            <input type="text" name="doi" placeholder="e.g., 10.1111/jnc.12345 or PMID: 12345678">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submitter Information -->
+                <div class="form-section">
+                    <h2>Submitter Information</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="optional">Your Name</label>
+                            <input type="text" name="submitterName" placeholder="Your name">
+                        </div>
+                        <div class="form-group">
+                            <label class="optional">Your Email</label>
+                            <input type="email" name="submitterEmail" placeholder="your@email.com">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row full-width">
+                        <div class="form-group">
+                            <label class="optional">Affiliation/Institution</label>
+                            <input type="text" name="affiliation" placeholder="e.g., University of...">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="optional">Additional Comments</label>
+                        <textarea name="comments" rows="3" placeholder="Any additional information or comments..."></textarea>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn-disabled" disabled>Submit Data (Coming Soon)</button>
+                    <button type="reset" class="btn-secondary" style="padding: 0.75rem 2rem;">Reset Form</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>BarrPeps Database</h3>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </div>
+            <div class="footer-section">
+                <h3>Quick Links</h3>
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+                <a href="submit.html">Submit Data</a>
+            </div>
+            <div class="footer-section">
+                <h3>Data Sources</h3>
+                <p>Curated from peer-reviewed literature</p>
+                <p>Last updated: April 2026</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 BarrPeps Database. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Show/hide existing peptide selector based on submission type
+        document.addEventListener('DOMContentLoaded', function() {
+            const typeNew = document.getElementById('typeNew');
+            const typeUpdate = document.getElementById('typeUpdate');
+            const existingSection = document.getElementById('existingPeptideSection');
+            
+            function toggleExistingSection() {
+                if (typeUpdate.checked) {
+                    existingSection.style.display = 'block';
+                } else {
+                    existingSection.style.display = 'none';
+                }
+            }
+            
+            typeNew.addEventListener('change', toggleExistingSection);
+            typeUpdate.addEventListener('change', toggleExistingSection);
+            
+            // Auto-calculate length from sequence
+            const seqInput = document.querySelector('textarea[name="sequence1"]');
+            const lengthInput = document.querySelector('input[name="length"]');
+            
+            if (seqInput && lengthInput) {
+                seqInput.addEventListener('input', function() {
+                    const cleanSeq = this.value.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
+                    lengthInput.value = cleanSeq.length;
+                });
+            }
+            
+            // Check URL parameters for pre-filling
+            const urlParams = new URLSearchParams(window.location.search);
+            const submissionType = urlParams.get('type');
+            const peptideId = urlParams.get('id');
+            const peptideName = urlParams.get('name');
+            
+            if (submissionType === 'update') {
+                document.getElementById('typeUpdate').checked = true;
+                toggleExistingSection();
+                
+                if (peptideName) {
+                    document.getElementById('existingPeptide').value = peptideName + ' (ID: ' + peptideId + ')';
+                } else if (peptideId) {
+                    document.getElementById('existingPeptide').value = 'Peptide ID: ' + peptideId;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
