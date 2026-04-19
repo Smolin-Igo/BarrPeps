@@ -1,4 +1,4 @@
-// BarrPeps Database - Full Version with Fixed Modifications
+// BarrPeps Database - Full Version with PDB Visualization
 
 let peptidesData = [];
 let experimentsData = [];
@@ -10,6 +10,11 @@ let currentView = 'table';
 let sortColumn = 'peptide_name';
 let sortDirection = 'asc';
 let filteredPeptides = [];
+
+// PDB Viewer variables
+let pdbViewer = null;
+let pdbContentCache = null;
+let disulfideBonds = [];
 
 // Chart instances
 let lengthChart = null;
@@ -95,7 +100,6 @@ function useFallbackData() {
 }
 
 function processAllData() {
-    // Build maps for related data
     var experimentsMap = {};
     for (var i = 0; i < experimentsData.length; i++) {
         var exp = experimentsData[i];
@@ -138,7 +142,6 @@ function processAllData() {
     
     console.log('PDB Map keys:', Object.keys(pdbMap).length);
     
-    // Build enhanced peptides
     var enhanced = [];
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
@@ -147,7 +150,6 @@ function processAllData() {
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        // Get ALL modifications directly from modifications table
         var allMods = [];
         var modsForPeptide = modificationsMap[pid] || [];
         for (var m = 0; m < modsForPeptide.length; m++) {
@@ -162,7 +164,6 @@ function processAllData() {
             }
         }
         
-        // Get PDB info - check both PDB_ID and Related_PDB fields
         var pdbInfo = pdbMap[pid] || [];
         var pdbIds = [];
         for (var j = 0; j < pdbInfo.length; j++) {
@@ -170,7 +171,6 @@ function processAllData() {
             var relatedPdb = pdbInfo[j]['Related_PDB'];
             
             if (pdbId && pdbId !== 'Nah' && pdbId !== '' && pdbId !== 'N/A') {
-                // Split by comma if multiple IDs
                 var ids = pdbId.split(',').map(function(id) { return id.trim(); });
                 for (var k = 0; k < ids.length; k++) {
                     if (ids[k] && ids[k] !== 'Nah' && ids[k] !== 'N/A') {
@@ -188,7 +188,6 @@ function processAllData() {
             }
         }
         
-        // Remove duplicates
         var uniquePdbIds = [];
         for (var j = 0; j < pdbIds.length; j++) {
             if (uniquePdbIds.indexOf(pdbIds[j]) === -1) {
@@ -223,7 +222,6 @@ function processAllData() {
     peptidesData = enhanced;
     filteredPeptides = [...peptidesData];
     
-    // Count how many have PDB
     var pdbCount = 0;
     for (var i = 0; i < peptidesData.length; i++) {
         if (peptidesData[i].has_pdb) pdbCount++;
@@ -238,6 +236,227 @@ function processAllData() {
     } else if (currentPage === 'peptide.html') {
         initPeptidePage();
     }
+}
+
+// ========== PDB STRUCTURE FUNCTIONS ==========
+
+// Fetch PDB structure from RCSB API
+async function fetchPDBStructure(pdbId) {
+    if (!pdbId || pdbId === '' || pdbId === 'N/A') {
+        return null;
+    }
+    
+    try {
+        var response = await fetch('https://files.rcsb.org/download/' + pdbId + '.pdb');
+        if (!response.ok) {
+            return null;
+        }
+        return await response.text();
+    } catch (error) {
+        console.error('Error fetching PDB:', error);
+        return null;
+    }
+}
+
+// Find disulfide bonds by distance between sulfur atoms
+function findDisulfideBonds(pdbContent) {
+    var lines = pdbContent.split('\n');
+    var sulfurAtoms = [];
+    
+    lines.forEach(function(line) {
+        if (line.startsWith('ATOM')) {
+            var atomName = line.substring(12, 16).trim();
+            var resName = line.substring(17, 20).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if ((atomName === 'SG' || atomName === 'S') && resName === 'CYS') {
+                var x = parseFloat(line.substring(30, 38));
+                var y = parseFloat(line.substring(38, 46));
+                var z = parseFloat(line.substring(46, 54));
+                
+                sulfurAtoms.push({
+                    resSeq: resSeq,
+                    x: x, y: y, z: z,
+                    atomName: atomName,
+                    resName: resName
+                });
+            }
+        }
+    });
+    
+    var bondsMap = new Map();
+    var sulfurInBonds = new Set();
+    
+    for (var i = 0; i < sulfurAtoms.length; i++) {
+        for (var j = i + 1; j < sulfurAtoms.length; j++) {
+            if (sulfurAtoms[i].resSeq === sulfurAtoms[j].resSeq) continue;
+            
+            var dx = sulfurAtoms[i].x - sulfurAtoms[j].x;
+            var dy = sulfurAtoms[i].y - sulfurAtoms[j].y;
+            var dz = sulfurAtoms[i].z - sulfurAtoms[j].z;
+            var distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (distance >= 1.8 && distance <= 2.5) {
+                var cys1 = sulfurAtoms[i].resSeq;
+                var cys2 = sulfurAtoms[j].resSeq;
+                var pairKey = Math.min(cys1, cys2) + '-' + Math.max(cys1, cys2);
+                
+                if (!bondsMap.has(pairKey)) {
+                    bondsMap.set(pairKey, {
+                        cys1: cys1,
+                        cys2: cys2,
+                        distance: distance,
+                        x1: sulfurAtoms[i].x,
+                        y1: sulfurAtoms[i].y,
+                        z1: sulfurAtoms[i].z,
+                        x2: sulfurAtoms[j].x,
+                        y2: sulfurAtoms[j].y,
+                        z2: sulfurAtoms[j].z
+                    });
+                    sulfurInBonds.add(cys1);
+                    sulfurInBonds.add(cys2);
+                }
+            }
+        }
+    }
+    
+    var bonds = [];
+    var values = bondsMap.values();
+    var next = values.next();
+    while (!next.done) {
+        bonds.push(next.value);
+        next = values.next();
+    }
+    
+    return { bonds: bonds, sulfurInBonds: sulfurInBonds };
+}
+
+// Render PDB structure
+function renderPDBStructure(pdbContent, pdbId) {
+    var container = document.getElementById('structure-viewer-pdb');
+    if (!container) return;
+    
+    if (!pdbContent) {
+        container.innerHTML = '<div class="no-structure"><p>No PDB structure available for this peptide.</p><p style="font-size: 0.7rem; margin-top: 0.5rem;">PDB ID: ' + (pdbId || 'N/A') + '</p></div>';
+        return;
+    }
+    
+    var result = findDisulfideBonds(pdbContent);
+    disulfideBonds = result.bonds;
+    var sulfurInBonds = result.sulfurInBonds;
+    
+    container.innerHTML = '';
+    
+    pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
+    pdbViewer.addModel(pdbContent, 'pdb');
+    pdbViewer.zoomTo();
+    
+    window.pdbContentCache = pdbContent;
+    window.sulfurInBonds = sulfurInBonds;
+    
+    setRepresentation('cartoon');
+}
+
+function setRepresentation(type) {
+    if (!pdbViewer) return;
+    
+    pdbViewer.removeAllModels();
+    pdbViewer.addModel(window.pdbContentCache, 'pdb');
+    
+    if (type === 'cartoon') {
+        pdbViewer.setStyle({}, { 
+            cartoon: { 
+                colorscheme: 'ss',
+                opacity: 0.85
+            } 
+        });
+        
+        if (window.sulfurInBonds && disulfideBonds.length > 0) {
+            for (var i = 0; i < disulfideBonds.length; i++) {
+                var bond = disulfideBonds[i];
+                pdbViewer.addStyle({resn: "CYS", resi: bond.cys1, atom: "SG"}, { 
+                    sphere: { color: 0xffaa00, scale: 0.2, opacity: 0.9 }
+                });
+                pdbViewer.addStyle({resn: "CYS", resi: bond.cys2, atom: "SG"}, { 
+                    sphere: { color: 0xffaa00, scale: 0.2, opacity: 0.9 }
+                });
+            }
+        }
+        
+        pdbViewer.removeAllShapes();
+        
+        if (disulfideBonds && disulfideBonds.length > 0) {
+            for (var i = 0; i < disulfideBonds.length; i++) {
+                var bond = disulfideBonds[i];
+                if (bond.x1 && bond.x2) {
+                    try {
+                        pdbViewer.addCylinder({
+                            start: {x: bond.x1, y: bond.y1, z: bond.z1},
+                            end: {x: bond.x2, y: bond.y2, z: bond.z2},
+                            radius: 0.15,
+                            color: 0xffaa00,
+                            fromCap: 1,
+                            toCap: 1
+                        });
+                    } catch(e) {
+                        console.error('Error adding cylinder:', e);
+                    }
+                }
+            }
+        }
+    } 
+    else if (type === 'ballAndStick') {
+        pdbViewer.setStyle({}, { 
+            stick: { colorscheme: 'elem', radius: 0.12 },
+            sphere: { colorscheme: 'elem', scale: 0.25 }
+        });
+        
+        if (window.sulfurInBonds && disulfideBonds.length > 0) {
+            for (var i = 0; i < disulfideBonds.length; i++) {
+                var bond = disulfideBonds[i];
+                pdbViewer.addStyle({resn: "CYS", resi: bond.cys1, atom: "SG"}, { 
+                    sphere: { color: 0xffaa00, scale: 0.25, opacity: 0.9 }
+                });
+                pdbViewer.addStyle({resn: "CYS", resi: bond.cys2, atom: "SG"}, { 
+                    sphere: { color: 0xffaa00, scale: 0.25, opacity: 0.9 }
+                });
+            }
+        }
+        
+        pdbViewer.removeAllShapes();
+        
+        if (disulfideBonds && disulfideBonds.length > 0) {
+            for (var i = 0; i < disulfideBonds.length; i++) {
+                var bond = disulfideBonds[i];
+                if (bond.x1 && bond.x2) {
+                    try {
+                        pdbViewer.addCylinder({
+                            start: {x: bond.x1, y: bond.y1, z: bond.z1},
+                            end: {x: bond.x2, y: bond.y2, z: bond.z2},
+                            radius: 0.18,
+                            color: 0xffaa00,
+                            fromCap: 1,
+                            toCap: 1
+                        });
+                    } catch(e) {
+                        console.error('Error adding cylinder:', e);
+                    }
+                }
+            }
+        }
+    }
+    
+    pdbViewer.zoomTo();
+    pdbViewer.render();
+    
+    var cartoonBtn = document.getElementById('btn-cartoon');
+    var ballBtn = document.getElementById('btn-ballstick');
+    
+    if (cartoonBtn) cartoonBtn.classList.remove('active');
+    if (ballBtn) ballBtn.classList.remove('active');
+    
+    if (type === 'cartoon' && cartoonBtn) cartoonBtn.classList.add('active');
+    else if (type === 'ballAndStick' && ballBtn) ballBtn.classList.add('active');
 }
 
 // ========== CHART FUNCTIONS ==========
@@ -498,11 +717,9 @@ function applyFilters() {
         
         if (p.length < minLen || p.length > maxLen) continue;
         
-        // Disulfide filter
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
-        // PDB filter - исправлено!
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
@@ -545,11 +762,9 @@ function downloadFASTA() {
     var fasta = '';
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
-        // Только название пептида
         var header = '>' + (p.peptide_name || 'peptide_' + p.id);
         fasta += header + '\n';
         
-        // Format sequence in lines of 60 characters
         var seq = p.sequence_clean || '';
         for (var j = 0; j < seq.length; j += 60) {
             fasta += seq.substring(j, j + 60) + '\n';
@@ -570,42 +785,78 @@ function downloadFullCSV() {
         return;
     }
     
-    // Collect all unique experiment response types for columns
-    var expTypes = {};
-    for (var i = 0; i < filteredPeptides.length; i++) {
-        var exps = filteredPeptides[i].experiments || [];
-        for (var j = 0; j < exps.length; j++) {
-            var exp = exps[j];
-            var method = exp['method'] || '';
-            var response = exp['response'] || '';
-            if (method && response) {
-                var key = method + '_' + response;
-                expTypes[key] = true;
-            }
-        }
-    }
-    
     var headers = [
         'ID', 'Name', 'Sequence_1letter', 'Sequence_3letter', 'Clean_Sequence',
         'Length', 'Molecular_Weight', 'Molecular_Formula', 'Structure_Type',
         'Disulfide_Bridges', 'Nature', 'Source_Organism', 'Modifications',
-        'PDB_IDs', 'Has_PDB'
+        'PDB_IDs', 'Has_PDB', 'Experimental_Data', 'References'
     ];
-    
-    // Add experiment columns
-    var expColumns = Object.keys(expTypes).sort();
-    for (var k = 0; k < expColumns.length; k++) {
-        headers.push(expColumns[k] + '_Result');
-        headers.push(expColumns[k] + '_Unit');
-        headers.push(expColumns[k] + '_Transport');
-    }
-    
-    // Add reference columns
-    headers.push('References');
     
     var rows = [];
     for (var i = 0; i < filteredPeptides.length; i++) {
         var p = filteredPeptides[i];
+        
+        var expStrings = [];
+        var exps = p.experiments || [];
+        
+        var expByMethod = {};
+        for (var j = 0; j < exps.length; j++) {
+            var exp = exps[j];
+            var method = exp['method'] || '';
+            if (!method) continue;
+            
+            if (!expByMethod[method]) {
+                expByMethod[method] = [];
+            }
+            expByMethod[method].push(exp);
+        }
+        
+        for (var method in expByMethod) {
+            var methodExps = expByMethod[method];
+            for (var k = 0; k < methodExps.length; k++) {
+                var exp = methodExps[k];
+                var parts = [];
+                
+                parts.push('Method: ' + method);
+                if (exp['method_type']) parts.push('Type: ' + exp['method_type']);
+                if (exp['response']) parts.push('Response: ' + exp['response']);
+                
+                var resultStr = '';
+                if (exp['result'] !== undefined && exp['result'] !== null && exp['result'] !== '') {
+                    resultStr = 'Result: ' + exp['result'];
+                    if (exp['unit']) resultStr += ' ' + exp['unit'];
+                    parts.push(resultStr);
+                }
+                
+                if (exp['transport_type']) parts.push('Transport: ' + exp['transport_type']);
+                if (exp['cell_line']) parts.push('Cell: ' + exp['cell_line']);
+                if (exp['animal_model']) parts.push('Model: ' + exp['animal_model']);
+                
+                expStrings.push(parts.join('; '));
+            }
+        }
+        
+        var experimentalData = expStrings.join(' | ');
+        
+        var refs = p.references || [];
+        var refStrings = [];
+        for (var r = 0; r < refs.length; r++) {
+            var ref = refs[r];
+            var authors = ref['authors'] || '';
+            var year = ref['year'] || '';
+            var title = ref['title'] || '';
+            var journal = ref['journal'] || '';
+            
+            if (authors && year) {
+                var refStr = authors + ' (' + year + ')';
+                if (title) refStr += ' ' + title;
+                if (journal) refStr += ' ' + journal;
+                refStrings.push(refStr);
+            } else if (title) {
+                refStrings.push(title);
+            }
+        }
+        var references = refStrings.join(' | ');
         
         var row = [
             p.id,
@@ -622,57 +873,18 @@ function downloadFullCSV() {
             p.source_organism || '',
             (p.modifications || []).join('; '),
             (p.pdb_ids || []).join('; '),
-            p.has_pdb ? 'Yes' : 'No'
+            p.has_pdb ? 'Yes' : 'No',
+            experimentalData,
+            references
         ];
-        
-        // Build experiment data map
-        var expMap = {};
-        var exps = p.experiments || [];
-        for (var j = 0; j < exps.length; j++) {
-            var exp = exps[j];
-            var method = exp['method'] || '';
-            var response = exp['response'] || '';
-            if (method && response) {
-                var key = method + '_' + response;
-                if (!expMap[key]) {
-                    expMap[key] = {
-                        result: exp['result'] || '',
-                        unit: exp['unit'] || '',
-                        transport: exp['transport_type'] || ''
-                    };
-                }
-            }
-        }
-        
-        // Add experiment values
-        for (var k = 0; k < expColumns.length; k++) {
-            var expKey = expColumns[k];
-            var expData = expMap[expKey] || { result: '', unit: '', transport: '' };
-            row.push(expData.result);
-            row.push(expData.unit);
-            row.push(expData.transport);
-        }
-        
-        // Build references string
-        var refs = p.references || [];
-        var refStrings = [];
-        for (var r = 0; r < refs.length; r++) {
-            var ref = refs[r];
-            var authors = ref['authors'] || '';
-            var year = ref['year'] || '';
-            var title = ref['title'] || '';
-            var journal = ref['journal'] || '';
-            if (authors && year) {
-                refStrings.push(authors + ' (' + year + ') ' + title + ' ' + journal);
-            }
-        }
-        row.push(refStrings.join(' | '));
         
         rows.push(row);
     }
     
-    // Build CSV
-    var csv = headers.map(function(h) { return '"' + h.replace(/"/g, '""') + '"'; }).join(',') + '\n';
+    var csv = headers.map(function(h) { 
+        return '"' + String(h).replace(/"/g, '""') + '"'; 
+    }).join(',') + '\n';
+    
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         var csvRow = [];
@@ -685,7 +897,7 @@ function downloadFullCSV() {
         csv += csvRow.join(',') + '\n';
     }
     
-    var blob = new Blob([csv], { type: 'text/csv' });
+    var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     var link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'barrpeps_full_export.csv';
@@ -710,7 +922,6 @@ function displayBrowseResults() {
 }
 
 function displayTableView(container) {
-    // Убрана колонка Structure
     var html = '<div class="table-wrapper" style="overflow-x: auto;">' +
         '<table class="data-table" style="width:100%; border-collapse: collapse; min-width: 800px;">' +
             '<thead>' +
@@ -808,11 +1019,13 @@ function sortBy(column) {
 }
 
 // ========== PEPTIDE DETAIL PAGE ==========
-function initPeptidePage() {
+async function initPeptidePage() {
+    console.log('Initializing peptide page');
+    
     var urlParams = new URLSearchParams(window.location.search);
     var peptideId = parseInt(urlParams.get('id'));
-    
     var peptide = null;
+    
     for (var i = 0; i < peptidesData.length; i++) {
         if (peptidesData[i].id === peptideId) {
             peptide = peptidesData[i];
@@ -821,24 +1034,29 @@ function initPeptidePage() {
     }
     
     if (!peptide) {
-        document.getElementById('peptideDetail').innerHTML = '<div class="error-message">Peptide not found<br><a href="browse.html" class="btn-primary">Browse Database</a></div>';
+        var detailContainer = document.getElementById('peptideDetail');
+        if (detailContainer) {
+            detailContainer.innerHTML = '<div class="error-message"><p>Peptide not found</p><a href="browse.html" class="btn-primary">Browse Database</a></div>';
+        }
         return;
     }
     
     document.title = peptide.peptide_name + ' - BarrPeps';
-    displayFullPeptideDetail(peptide);
+    
+    var pdbContent = null;
+    var pdbId = null;
+    if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
+        pdbId = peptide.pdb_ids[0];
+        pdbContent = await fetchPDBStructure(pdbId);
+        window.pdbContentCache = pdbContent;
+    }
+    
+    displayPeptideDetail(peptide, pdbContent, pdbId);
 }
 
-function formatSequenceWithMods(seq) {
-    if (!seq) return 'N/A';
-    return seq
-        .replace(/\(Me2\)/g, '<span class="modification" title="Dimethylated">(Me2)</span>')
-        .replace(/\(D\)/g, '<span class="modification" title="D-amino acid">(D)</span>')
-        .replace(/\(NMe\)/g, '<span class="modification" title="N-methylated">(N-Me)</span>')
-        .replace(/-NH2/g, '<span class="modification" title="Amidated">-NH2</span>');
-}
-
-function displayFullPeptideDetail(peptide) {
+function displayPeptideDetail(peptide, pdbContent, pdbId) {
+    var hasPDB = pdbContent !== null;
+    
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
         var modList = peptide.modifications.join(', ');
@@ -849,13 +1067,12 @@ function displayFullPeptideDetail(peptide) {
             '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
     }
     
-    // PDB section
     var pdbHtml = '';
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
         var pdbLinks = [];
         for (var i = 0; i < peptide.pdb_ids.length; i++) {
-            var pdbId = peptide.pdb_ids[i];
-            pdbLinks.push('<a href="https://www.rcsb.org/structure/' + pdbId + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + pdbId + '</a>');
+            var id = peptide.pdb_ids[i];
+            pdbLinks.push('<a href="https://www.rcsb.org/structure/' + id + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + id + '</a>');
         }
         pdbHtml = '<div class="detail-section"><h3>PDB Structures</h3>' +
             '<div class="detail-row"><span class="detail-value">' + pdbLinks.join(', ') + '</span></div></div>';
@@ -920,7 +1137,7 @@ function displayFullPeptideDetail(peptide) {
         
         experimentsHtml += '</tbody></table></div></div>';
         
-        if (experimentsHtml.indexOf('<tr') === -1 || experimentsHtml.indexOf('</td>') === experimentsHtml.lastIndexOf('</table>') - 6) {
+        if (experimentsHtml.indexOf('<tr') === -1) {
             experimentsHtml = '<div class="detail-section"><h3>Experimental Data</h3>' +
                 '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
         }
@@ -962,10 +1179,38 @@ function displayFullPeptideDetail(peptide) {
             '<a href="browse.html" class="btn-secondary back-button">← Back to Browse</a>' +
             '<h1 style="color:#2c5282; margin-top:0.5rem;">' + (peptide.peptide_name || 'N/A') + '</h1>' +
             '<p style="color:#718096;">ID: ' + peptide.id + '</p>' +
-        '</div>' +
-        
-        '<div class="detail-section"><h3>Basic Information</h3>' +
-            '<div class="detail-row"><span class="detail-label">Sequence (with modifications):</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">' + formatSequenceWithMods(peptide.sequence_one_letter) + '</span></div>' +
+        '</div>';
+    
+    // Structure Viewer
+    if (hasPDB) {
+        html += '<div class="structure-viewer">' +
+            '<h3 style="font-size: 0.9rem; margin-bottom: 0.6rem;">3D Structure Visualization</h3>' +
+            '<div id="structure-viewer-pdb" class="structure-container"></div>' +
+            '<div class="structure-controls">' +
+                '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
+                '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>' +
+            '</div>' +
+            '<div class="structure-legend">' +
+                '<div class="legend-item"><div class="legend-color carbon"></div><span>Carbon</span></div>' +
+                '<div class="legend-item"><div class="legend-color oxygen"></div><span>Oxygen</span></div>' +
+                '<div class="legend-item"><div class="legend-color nitrogen"></div><span>Nitrogen</span></div>' +
+                '<div class="legend-item"><div class="legend-color sulfur"></div><span>Sulfur</span></div>' +
+                '<div class="legend-item"><div class="legend-color" style="background: #ffaa00;"></div><span>Disulfide</span></div>' +
+            '</div>' +
+            '<div class="pdb-info">' +
+                '<strong>PDB ID: ' + pdbId + '</strong> | ' +
+                '<a href="https://www.rcsb.org/structure/' + pdbId + '" target="_blank">View on RCSB.org</a>' +
+            '</div>' +
+        '</div>';
+    } else {
+        html += '<div class="structure-viewer">' +
+            '<h3 style="font-size: 0.9rem; margin-bottom: 0.6rem;">3D Structure Visualization</h3>' +
+            '<div class="no-structure"><p>No PDB structure available for this peptide.</p></div>' +
+        '</div>';
+    }
+    
+    html += '<div class="detail-section"><h3>Basic Information</h3>' +
+            '<div class="detail-row"><span class="detail-label">Sequence (with modifications):</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">' + (peptide.sequence_one_letter || 'N/A') + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Clean sequence:</span><span class="detail-value" style="font-family:monospace;">' + (peptide.sequence_clean || 'N/A') + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">3-letter sequence:</span><span class="detail-value" style="word-break:break-all;">' + (peptide.sequence_three_letter || 'N/A') + '</span></div>' +
             '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">' + (peptide.length || 'N/A') + ' aa</span></div>' +
@@ -990,7 +1235,16 @@ function displayFullPeptideDetail(peptide) {
         referencesHtml +
     '</div>';
     
-    document.getElementById('peptideDetail').innerHTML = html;
+    var detailContainer = document.getElementById('peptideDetail');
+    if (detailContainer) {
+        detailContainer.innerHTML = html;
+    }
+    
+    if (hasPDB && pdbContent) {
+        setTimeout(function() {
+            renderPDBStructure(pdbContent, pdbId);
+        }, 100);
+    }
 }
 
 // ========== EXPORTS ==========
@@ -1002,6 +1256,7 @@ window.applyAllFilters = applyFilters;
 window.resetAllFilters = resetFilters;
 window.downloadFASTA = downloadFASTA;
 window.downloadFullCSV = downloadFullCSV;
+window.setRepresentation = setRepresentation;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 

@@ -6,12 +6,20 @@
     <title id="pageTitle">BarrPeps - Peptide Details</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 3Dmol.js для визуализации PDB структур -->
+    <script src="https://cdn.jsdelivr.net/npm/3dmol@2.0.1/build/3Dmol-min.js"></script>
     <style>
         .structure-viewer {
             background: #f7fafc;
             border-radius: 12px;
             padding: 1rem;
             margin-bottom: 1.5rem;
+        }
+        
+        .structure-viewer h3 {
+            font-size: 0.9rem;
+            margin-bottom: 0.6rem;
+            color: #2c5282;
         }
         
         .structure-container {
@@ -22,6 +30,101 @@
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             overflow: hidden;
+        }
+        
+        .structure-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.6rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .structure-controls button {
+            padding: 0.35rem 0.7rem;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 500;
+            min-height: 32px;
+            transition: background 0.2s;
+        }
+        
+        .structure-controls button:hover {
+            background: #3182ce;
+        }
+        
+        .structure-controls button:active {
+            background: #2c5282;
+            transform: scale(0.97);
+        }
+        
+        .structure-controls button.active {
+            background: #2c5282;
+        }
+        
+        .structure-legend {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 0.6rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            font-size: 0.65rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+        
+        .legend-color.carbon {
+            background: #808080;
+        }
+        
+        .legend-color.oxygen {
+            background: #ff3333;
+        }
+        
+        .legend-color.nitrogen {
+            background: #3333ff;
+        }
+        
+        .legend-color.sulfur {
+            background: #ffcc00;
+        }
+        
+        .legend-color.disulfide {
+            background: #ffaa00;
+            border: 1px solid #cc8800;
+        }
+        
+        .pdb-info {
+            background: #ebf8ff;
+            padding: 0.4rem;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            font-size: 0.65rem;
+            text-align: center;
+        }
+        
+        .pdb-info a {
+            color: #4299e1;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .pdb-info a:hover {
+            text-decoration: underline;
         }
         
         .no-structure {
@@ -90,6 +193,16 @@
             .suggest-edit-btn {
                 font-size: 0.9rem;
                 padding: 0.6rem 1.2rem;
+            }
+            
+            .structure-legend {
+                font-size: 0.75rem;
+                gap: 1.2rem;
+            }
+            
+            .legend-color {
+                width: 16px;
+                height: 16px;
             }
         }
         
