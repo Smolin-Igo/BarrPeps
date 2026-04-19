@@ -100,6 +100,7 @@ function useFallbackData() {
 }
 
 function processAllData() {
+    // Build maps for related data
     var experimentsMap = {};
     for (var i = 0; i < experimentsData.length; i++) {
         var exp = experimentsData[i];
@@ -148,10 +149,20 @@ function processAllData() {
         var pid = p['peptide_id'] || i + 1;
         var rawSeq = p['sequence_1'] || p['sequence_one_letter'] || '';
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
-        var cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         
-        var allMods = [];
+        // Получаем clean sequence из modifications таблицы
+        var cleanSeq = '';
         var modsForPeptide = modificationsMap[pid] || [];
+        if (modsForPeptide.length > 0) {
+            cleanSeq = modsForPeptide[0]['sequence_1_clean'] || '';
+        }
+        // Если не нашли в modifications, генерируем из sequence_1
+        if (!cleanSeq && rawSeq) {
+            cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
+        }
+        
+        // Get ALL modifications directly from modifications table
+        var allMods = [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
             if (modVal && modVal !== 'N/A' && modVal !== '') {
