@@ -156,7 +156,6 @@ function processAllData() {
         if (modsForPeptide.length > 0) {
             cleanSeq = modsForPeptide[0]['sequence_1_clean'] || '';
         }
-        // Если не нашли в modifications, генерируем из sequence_1
         if (!cleanSeq && rawSeq) {
             cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         }
@@ -176,11 +175,14 @@ function processAllData() {
         }
         
         var pdbInfo = pdbMap[pid] || [];
-        var pdbIds = [];
+        var pdbIds = [];        // Только PDB_ID для визуализации
+        var relatedPdbIds = []; // Related_PDB только для ссылок
+        
         for (var j = 0; j < pdbInfo.length; j++) {
             var pdbId = pdbInfo[j]['PDB_ID'];
             var relatedPdb = pdbInfo[j]['Related_PDB'];
             
+            // Обрабатываем PDB_ID
             if (pdbId && pdbId !== 'Nah' && pdbId !== '' && pdbId !== 'N/A') {
                 var ids = pdbId.split(',').map(function(id) { return id.trim(); });
                 for (var k = 0; k < ids.length; k++) {
@@ -189,16 +191,19 @@ function processAllData() {
                     }
                 }
             }
+            
+            // Обрабатываем Related_PDB отдельно
             if (relatedPdb && relatedPdb !== 'Nah' && relatedPdb !== '') {
                 var relIds = relatedPdb.split(',').map(function(id) { return id.trim(); });
                 for (var k = 0; k < relIds.length; k++) {
-                    if (relIds[k] && relIds[k] !== 'Nah') {
-                        pdbIds.push(relIds[k]);
+                    if (relIds[k] && relIds[k] !== 'Nah' && relIds[k] !== 'N/A') {
+                        relatedPdbIds.push(relIds[k]);
                     }
                 }
             }
         }
         
+        // Убираем дубликаты
         var uniquePdbIds = [];
         for (var j = 0; j < pdbIds.length; j++) {
             if (uniquePdbIds.indexOf(pdbIds[j]) === -1) {
@@ -206,7 +211,14 @@ function processAllData() {
             }
         }
         
-        var hasPDB = uniquePdbIds.length > 0;
+        var uniqueRelatedPdbIds = [];
+        for (var j = 0; j < relatedPdbIds.length; j++) {
+            if (uniqueRelatedPdbIds.indexOf(relatedPdbIds[j]) === -1) {
+                uniqueRelatedPdbIds.push(relatedPdbIds[j]);
+            }
+        }
+        
+        var hasPDB = uniquePdbIds.length > 0; // Только по PDB_ID
         
         enhanced.push({
             id: pid,
@@ -224,7 +236,8 @@ function processAllData() {
             experiments: experimentsMap[pid] || [],
             references: referencesMap[pid] || [],
             modifications: allMods,
-            pdb_ids: uniquePdbIds,
+            pdb_ids: uniquePdbIds,           // Для визуализации и фильтра
+            related_pdb_ids: uniqueRelatedPdbIds, // Только для ссылок
             has_pdb: hasPDB,
             notes: p['notes'] || ''
         });
@@ -1130,7 +1143,7 @@ async function initPeptidePage() {
     
     document.title = peptide.peptide_name + ' - BarrPeps';
     
-    // Загружаем все PDB структуры
+    // Загружаем только PDB_ID структуры (не Related_PDB)
     var pdbContents = [];
     var pdbIds = [];
     
@@ -1150,11 +1163,9 @@ async function initPeptidePage() {
 }
 
 function displayPeptideDetail(peptide, pdbContents, pdbIds) {
-    // pdbContents и pdbIds теперь могут быть массивами
     var pdbContentsArray = Array.isArray(pdbContents) ? pdbContents : (pdbContents ? [pdbContents] : []);
     var pdbIdsArray = Array.isArray(pdbIds) ? pdbIds : (pdbIds ? [pdbIds] : []);
     
-    // Фильтруем только валидные структуры
     var validStructures = [];
     for (var i = 0; i < pdbIdsArray.length; i++) {
         if (pdbContentsArray[i] && pdbIdsArray[i]) {
@@ -1177,6 +1188,7 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
     }
     
+    // PDB секция с разделением на Structures и Related
     var pdbHtml = '';
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
         var pdbLinks = [];
@@ -1185,9 +1197,34 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             pdbLinks.push('<a href="https://www.rcsb.org/structure/' + id + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + id + '</a>');
         }
         pdbHtml = '<div class="detail-section"><h3>PDB Structures</h3>' +
-            '<div class="detail-row"><span class="detail-value">' + pdbLinks.join(', ') + '</span></div></div>';
+            '<div class="detail-row"><span class="detail-label">Available structures:</span><span class="detail-value">' + pdbLinks.join(', ') + '</span></div>';
     }
     
+    // Related PDB Structures - выпадающий список
+    if (peptide.related_pdb_ids && peptide.related_pdb_ids.length > 0) {
+        var relatedOptions = '';
+        for (var i = 0; i < peptide.related_pdb_ids.length; i++) {
+            var id = peptide.related_pdb_ids[i];
+            relatedOptions += '<option value="' + id + '">' + id + '</option>';
+        }
+        
+        pdbHtml += '<div class="detail-row" style="margin-top: 0.75rem;">' +
+            '<span class="detail-label">Related PDB:</span>' +
+            '<span class="detail-value">' +
+                '<select id="relatedPdbSelect" style="padding: 0.3rem 0.5rem; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.75rem; background: white; margin-right: 0.5rem;" onchange="openRelatedPdb()">' +
+                    '<option value="">-- Select related structure --</option>' +
+                    relatedOptions +
+                '</select>' +
+                '<button onclick="openRelatedPdb()" style="padding: 0.3rem 0.8rem; background: #4299e1; color: white; border: none; border-radius: 6px; font-size: 0.7rem; cursor: pointer;">Open</button>' +
+            '</span>' +
+        '</div>';
+    }
+    
+    if (pdbHtml) {
+        pdbHtml += '</div>';
+    }
+    
+    // Остальной код experimentsHtml, referencesHtml...
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
         var uniqueExperiments = [];
@@ -1291,7 +1328,7 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<p style="color:#718096;">ID: ' + peptide.id + '</p>' +
         '</div>';
     
-    // Structure Viewer с выпадающим списком
+    // Structure Viewer - только для PDB_ID
     if (hasPDB) {
         var pdbSelectorHtml = '';
         if (validStructures.length > 1) {
@@ -1328,7 +1365,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '</div>' +
         '</div>';
         
-        // Сохраняем структуры в глобальную переменную для переключения
         window.pdbStructures = validStructures;
         window.currentPdbIndex = 0;
     } else {
@@ -1395,8 +1431,14 @@ function switchPDB(index) {
     renderPDBStructure(structure.content, structure.id);
 }
 
-// Добавляем функцию в глобальный scope
-window.switchPDB = switchPDB;
+function openRelatedPdb() {
+    var select = document.getElementById('relatedPdbSelect');
+    if (select && select.value) {
+        window.open('https://www.rcsb.org/structure/' + select.value, '_blank');
+    }
+}
+
+
 
 // ========== EXPORTS ==========
 window.searchPeptides = applyFilters;
@@ -1410,6 +1452,8 @@ window.downloadFullCSV = downloadFullCSV;
 window.setRepresentation = setRepresentation;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
+window.openRelatedPdb = openRelatedPdb;
+window.switchPDB = switchPDB;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
