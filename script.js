@@ -497,27 +497,56 @@ function calculateLengthDistribution() {
     var binSize = 5;
     var bins = {};
     
-    var startBin = Math.floor(minLength / binSize) * binSize;
+    // Начинаем с 1 вместо 0
+    var startBin = 1;
     var endBin = Math.ceil(maxLength / binSize) * binSize;
     
     for (var i = startBin; i <= endBin; i += binSize) {
-        var binLabel = i + '-' + (i + binSize);
+        var binEnd = i + binSize - 1;
+        var binLabel = i + '-' + binEnd;
         bins[binLabel] = 0;
     }
     
     for (var i = 0; i < lengths.length; i++) {
         var len = lengths[i];
-        var binIndex = Math.floor(len / binSize) * binSize;
-        var binLabel = binIndex + '-' + (binIndex + binSize);
+        var binIndex = Math.floor((len - 1) / binSize); // Смещаем на -1 чтобы 1-5 попали в первый бин
+        var binStart = binIndex * binSize + 1;
+        var binEnd = binStart + binSize - 1;
+        var binLabel = binStart + '-' + binEnd;
         if (bins[binLabel] !== undefined) bins[binLabel]++;
     }
     
+    // Убираем пустые бины в начале и конце
     var filtered = {};
-    for (var label in bins) {
-        if (bins[label] > 0) {
-            filtered[label] = bins[label];
+    var foundNonZero = false;
+    var binKeys = Object.keys(bins).sort(function(a, b) {
+        return parseInt(a.split('-')[0]) - parseInt(b.split('-')[0]);
+    });
+    
+    // Находим первый не нулевой бин
+    var firstNonZeroIndex = 0;
+    for (var i = 0; i < binKeys.length; i++) {
+        if (bins[binKeys[i]] > 0) {
+            firstNonZeroIndex = i;
+            break;
         }
     }
+    
+    // Находим последний не нулевой бин
+    var lastNonZeroIndex = binKeys.length - 1;
+    for (var i = binKeys.length - 1; i >= 0; i--) {
+        if (bins[binKeys[i]] > 0) {
+            lastNonZeroIndex = i;
+            break;
+        }
+    }
+    
+    // Сохраняем все бины от первого до последнего не нулевого
+    for (var i = firstNonZeroIndex; i <= lastNonZeroIndex; i++) {
+        var label = binKeys[i];
+        filtered[label] = bins[label];
+    }
+    
     return filtered;
 }
 
