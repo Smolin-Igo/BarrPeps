@@ -100,7 +100,6 @@ function useFallbackData() {
 }
 
 function processAllData() {
-    // Build maps for related data
     var experimentsMap = {};
     for (var i = 0; i < experimentsData.length; i++) {
         var exp = experimentsData[i];
@@ -150,7 +149,6 @@ function processAllData() {
         var rawSeq = p['sequence_1'] || p['sequence_one_letter'] || '';
         var threeSeq = p['sequence_3'] || p['sequence_three_letter'] || '';
         
-        // Получаем clean sequence из modifications таблицы
         var cleanSeq = '';
         var modsForPeptide = modificationsMap[pid] || [];
         if (modsForPeptide.length > 0) {
@@ -160,7 +158,6 @@ function processAllData() {
             cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
         }
         
-        // Get ALL modifications directly from modifications table
         var allMods = [];
         for (var m = 0; m < modsForPeptide.length; m++) {
             var modVal = modsForPeptide[m]['modifications'];
@@ -175,14 +172,13 @@ function processAllData() {
         }
         
         var pdbInfo = pdbMap[pid] || [];
-        var pdbIds = [];        // Только PDB_ID для визуализации
-        var relatedPdbIds = []; // Related_PDB только для ссылок
+        var pdbIds = [];
+        var relatedPdbIds = [];
         
         for (var j = 0; j < pdbInfo.length; j++) {
             var pdbId = pdbInfo[j]['PDB_ID'];
             var relatedPdb = pdbInfo[j]['Related_PDB'];
             
-            // Обрабатываем PDB_ID
             if (pdbId && pdbId !== 'Nah' && pdbId !== '' && pdbId !== 'N/A') {
                 var ids = pdbId.split(',').map(function(id) { return id.trim(); });
                 for (var k = 0; k < ids.length; k++) {
@@ -192,7 +188,6 @@ function processAllData() {
                 }
             }
             
-            // Обрабатываем Related_PDB отдельно
             if (relatedPdb && relatedPdb !== 'Nah' && relatedPdb !== '') {
                 var relIds = relatedPdb.split(',').map(function(id) { return id.trim(); });
                 for (var k = 0; k < relIds.length; k++) {
@@ -203,7 +198,6 @@ function processAllData() {
             }
         }
         
-        // Убираем дубликаты
         var uniquePdbIds = [];
         for (var j = 0; j < pdbIds.length; j++) {
             if (uniquePdbIds.indexOf(pdbIds[j]) === -1) {
@@ -218,7 +212,7 @@ function processAllData() {
             }
         }
         
-        var hasPDB = uniquePdbIds.length > 0; // Только по PDB_ID
+        var hasPDB = uniquePdbIds.length > 0;
         
         enhanced.push({
             id: pid,
@@ -236,8 +230,8 @@ function processAllData() {
             experiments: experimentsMap[pid] || [],
             references: referencesMap[pid] || [],
             modifications: allMods,
-            pdb_ids: uniquePdbIds,           // Для визуализации и фильтра
-            related_pdb_ids: uniqueRelatedPdbIds, // Только для ссылок
+            pdb_ids: uniquePdbIds,
+            related_pdb_ids: uniqueRelatedPdbIds,
             has_pdb: hasPDB,
             notes: p['notes'] || ''
         });
@@ -264,7 +258,6 @@ function processAllData() {
 
 // ========== PDB STRUCTURE FUNCTIONS ==========
 
-// Fetch PDB structure from RCSB API
 async function fetchPDBStructure(pdbId) {
     if (!pdbId || pdbId === '' || pdbId === 'N/A') {
         return null;
@@ -282,12 +275,101 @@ async function fetchPDBStructure(pdbId) {
     }
 }
 
-// Find disulfide bonds by distance between sulfur atoms
+function convertThreeToOne(threeLetter) {
+    var aaMap = {
+        'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
+        'GLN': 'Q', 'GLU': 'E', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
+        'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'PHE': 'F', 'PRO': 'P',
+        'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V',
+        'SEC': 'U', 'PYL': 'O', 'ASX': 'B', 'GLX': 'Z', 'XLE': 'J',
+        'UNK': 'X'
+    };
+    return aaMap[threeLetter.toUpperCase()] || '';
+}
+
+function findLongestMatch(seq1, seq2) {
+    var maxLength = 0;
+    for (var i = 0; i < seq1.length; i++) {
+        for (var j = 0; j < seq2.length; j++) {
+            var k = 0;
+            while (i + k < seq1.length && j + k < seq2.length && seq1[i + k] === seq2[j + k]) {
+                k++;
+            }
+            if (k > maxLength) maxLength = k;
+        }
+    }
+    return maxLength;
+}
+
+function findPeptideChain(pdbContent, targetSequence) {
+    if (!targetSequence) return null;
+    
+    var lines = pdbContent.split('\n');
+    var chains = {};
+    var currentChain = null;
+    var chainSequence = '';
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('ATOM') && line.substring(13, 15).trim() === 'CA') {
+            var chainId = line.substring(21, 22).trim();
+            var resName = line.substring(17, 20).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if (currentChain !== chainId) {
+                if (currentChain && chainSequence) {
+                    chains[currentChain] = {
+                        sequence: chainSequence,
+                        residues: chains[currentChain] ? chains[currentChain].residues : []
+                    };
+                }
+                currentChain = chainId;
+                chainSequence = '';
+                chains[chainId] = { sequence: '', residues: [] };
+            }
+            
+            var aa1 = convertThreeToOne(resName);
+            if (aa1) {
+                chainSequence += aa1;
+                chains[chainId].residues.push({ resSeq: resSeq, aa: aa1 });
+            }
+        }
+    }
+    
+    if (currentChain && chainSequence) {
+        chains[currentChain] = {
+            sequence: chainSequence,
+            residues: chains[currentChain] ? chains[currentChain].residues : []
+        };
+    }
+    
+    targetSequence = targetSequence.toUpperCase();
+    var bestMatch = { chain: null, score: 0 };
+    
+    for (var chain in chains) {
+        var seq = chains[chain].sequence;
+        if (seq.indexOf(targetSequence) !== -1) {
+            return { chain: chain, match: 'full' };
+        }
+        var matchScore = findLongestMatch(seq, targetSequence);
+        if (matchScore > bestMatch.score) {
+            bestMatch = { chain: chain, score: matchScore };
+        }
+    }
+    
+    if (bestMatch.score > targetSequence.length * 0.5) {
+        return { chain: bestMatch.chain, match: 'partial' };
+    }
+    
+    return null;
+}
+
 function findDisulfideBonds(pdbContent) {
     var lines = pdbContent.split('\n');
     var sulfurAtoms = [];
     
-    lines.forEach(function(line) {
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
         if (line.startsWith('ATOM')) {
             var atomName = line.substring(12, 16).trim();
             var resName = line.substring(17, 20).trim();
@@ -306,7 +388,7 @@ function findDisulfideBonds(pdbContent) {
                 });
             }
         }
-    });
+    }
     
     var bondsMap = new Map();
     var sulfurInBonds = new Set();
@@ -355,14 +437,22 @@ function findDisulfideBonds(pdbContent) {
     return { bonds: bonds, sulfurInBonds: sulfurInBonds };
 }
 
-// Render PDB structure
-function renderPDBStructure(pdbContent, pdbId) {
+function renderPDBStructure(pdbContent, pdbId, peptideSequence) {
     var container = document.getElementById('structure-viewer-pdb');
     if (!container) return;
     
     if (!pdbContent) {
         container.innerHTML = '<div class="no-structure"><p>No PDB structure available for this peptide.</p><p style="font-size: 0.7rem; margin-top: 0.5rem;">PDB ID: ' + (pdbId || 'N/A') + '</p></div>';
         return;
+    }
+    
+    var peptideChainInfo = null;
+    if (peptideSequence) {
+        peptideChainInfo = findPeptideChain(pdbContent, peptideSequence);
+        if (peptideChainInfo) {
+            console.log('Found peptide in chain:', peptideChainInfo.chain, 'Match:', peptideChainInfo.match);
+            window.peptideChain = peptideChainInfo.chain;
+        }
     }
     
     var result = findDisulfideBonds(pdbContent);
@@ -377,23 +467,38 @@ function renderPDBStructure(pdbContent, pdbId) {
     
     window.pdbContentCache = pdbContent;
     window.sulfurInBonds = sulfurInBonds;
+    window.highlightPeptide = !!peptideChainInfo;
     
-    setRepresentation('cartoon');
+    setRepresentationWithHighlight('cartoon', peptideChainInfo ? peptideChainInfo.chain : null);
 }
 
-function setRepresentation(type) {
+function setRepresentationWithHighlight(type, peptideChain) {
     if (!pdbViewer) return;
     
     pdbViewer.removeAllModels();
     pdbViewer.addModel(window.pdbContentCache, 'pdb');
     
     if (type === 'cartoon') {
-        pdbViewer.setStyle({}, { 
-            cartoon: { 
-                colorscheme: 'ss',
-                opacity: 0.85
-            } 
-        });
+        if (peptideChain && window.highlightPeptide) {
+            pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.5 } });
+            pdbViewer.setStyle({ chain: peptideChain }, { cartoon: { color: 0x00cc88, opacity: 0.9 } });
+            
+            var legendContainer = document.querySelector('.structure-legend');
+            if (legendContainer && !document.getElementById('peptideLegendItem')) {
+                var newItem = document.createElement('div');
+                newItem.id = 'peptideLegendItem';
+                newItem.className = 'legend-item';
+                newItem.innerHTML = '<div class="legend-color" style="background: #00cc88;"></div><span>Peptide (Chain ' + peptideChain + ')</span>';
+                legendContainer.appendChild(newItem);
+            }
+        } else {
+            pdbViewer.setStyle({}, { 
+                cartoon: { 
+                    colorscheme: 'ss',
+                    opacity: 0.85
+                } 
+            });
+        }
         
         if (window.sulfurInBonds && disulfideBonds.length > 0) {
             for (var i = 0; i < disulfideBonds.length; i++) {
@@ -430,10 +535,21 @@ function setRepresentation(type) {
         }
     } 
     else if (type === 'ballAndStick') {
-        pdbViewer.setStyle({}, { 
-            stick: { colorscheme: 'elem', radius: 0.12 },
-            sphere: { colorscheme: 'elem', scale: 0.25 }
-        });
+        if (peptideChain && window.highlightPeptide) {
+            pdbViewer.setStyle({}, { 
+                stick: { color: 0xcccccc, radius: 0.1 },
+                sphere: { color: 0xcccccc, scale: 0.2 }
+            });
+            pdbViewer.setStyle({ chain: peptideChain }, { 
+                stick: { color: 0x00cc88, radius: 0.12 },
+                sphere: { color: 0x00cc88, scale: 0.25 }
+            });
+        } else {
+            pdbViewer.setStyle({}, { 
+                stick: { colorscheme: 'elem', radius: 0.12 },
+                sphere: { colorscheme: 'elem', scale: 0.25 }
+            });
+        }
         
         if (window.sulfurInBonds && disulfideBonds.length > 0) {
             for (var i = 0; i < disulfideBonds.length; i++) {
@@ -483,6 +599,35 @@ function setRepresentation(type) {
     else if (type === 'ballAndStick' && ballBtn) ballBtn.classList.add('active');
 }
 
+function setRepresentation(type) {
+    setRepresentationWithHighlight(type, window.peptideChain || null);
+}
+
+function switchPDB(index) {
+    index = parseInt(index);
+    if (!window.pdbStructures || !window.pdbStructures[index]) return;
+    
+    var structure = window.pdbStructures[index];
+    window.currentPdbIndex = index;
+    window.pdbContentCache = structure.content;
+    
+    var pdbIdSpan = document.getElementById('currentPdbId');
+    var rcsbLink = document.getElementById('rcsbLink');
+    if (pdbIdSpan) pdbIdSpan.textContent = structure.id;
+    if (rcsbLink) rcsbLink.href = 'https://www.rcsb.org/structure/' + structure.id;
+    
+    var peptideSequence = window.currentPeptideSequence || '';
+    
+    renderPDBStructure(structure.content, structure.id, peptideSequence);
+}
+
+function openRelatedPdb() {
+    var select = document.getElementById('relatedPdbSelect');
+    if (select && select.value) {
+        window.open('https://www.rcsb.org/structure/' + select.value, '_blank');
+    }
+}
+
 // ========== CHART FUNCTIONS ==========
 function calculateLengthDistribution() {
     var lengths = [];
@@ -496,7 +641,6 @@ function calculateLengthDistribution() {
     var binSize = 5;
     var bins = {};
     
-    // Начинаем с 1
     var startBin = 1;
     var endBin = Math.ceil(maxLength / binSize) * binSize;
     
@@ -515,7 +659,6 @@ function calculateLengthDistribution() {
         if (bins[binLabel] !== undefined) bins[binLabel]++;
     }
     
-    // Убираем ВСЕ бины с нулевым значением
     var filtered = {};
     for (var label in bins) {
         if (bins[label] > 0) {
@@ -687,43 +830,6 @@ function setupBrowseEventListeners() {
     }
 }
 
-function initSourceSelector() {
-    var sourceSelect = document.getElementById('sourceFilter');
-    if (!sourceSelect) return;
-    
-    var sources = {};
-    for (var i = 0; i < peptidesData.length; i++) {
-        var source = peptidesData[i].source_organism;
-        if (source && source !== 'N/A' && source !== '') {
-            // Разделяем по запятой и обрабатываем каждое значение отдельно
-            var parts = source.split(',').map(function(item) { 
-                return item.trim().toLowerCase(); 
-            });
-            for (var j = 0; j < parts.length; j++) {
-                if (parts[j]) {
-                    sources[parts[j]] = true;
-                }
-            }
-        }
-    }
-    
-    // Очищаем существующие опции кроме первой "All"
-    while (sourceSelect.options.length > 1) {
-        sourceSelect.remove(1);
-    }
-    
-    // Сортируем и добавляем опции
-    var sortedSources = Object.keys(sources).sort();
-    for (var k = 0; k < sortedSources.length; k++) {
-        var option = document.createElement('option');
-        option.value = sortedSources[k];
-        // Делаем первую букву заглавной для отображения
-        var displayName = sortedSources[k].charAt(0).toUpperCase() + sortedSources[k].slice(1);
-        option.textContent = displayName;
-        sourceSelect.appendChild(option);
-    }
-}
-
 function initModificationSelector() {
     var modSelect = document.getElementById('modFilter');
     if (!modSelect) return;
@@ -749,6 +855,39 @@ function initModificationSelector() {
         option.value = sortedTypes[k];
         option.textContent = sortedTypes[k];
         modSelect.appendChild(option);
+    }
+}
+
+function initSourceSelector() {
+    var sourceSelect = document.getElementById('sourceFilter');
+    if (!sourceSelect) return;
+    
+    var sources = {};
+    for (var i = 0; i < peptidesData.length; i++) {
+        var source = peptidesData[i].source_organism;
+        if (source && source !== 'N/A' && source !== '') {
+            var parts = source.split(',').map(function(item) { 
+                return item.trim().toLowerCase(); 
+            });
+            for (var j = 0; j < parts.length; j++) {
+                if (parts[j]) {
+                    sources[parts[j]] = true;
+                }
+            }
+        }
+    }
+    
+    while (sourceSelect.options.length > 1) {
+        sourceSelect.remove(1);
+    }
+    
+    var sortedSources = Object.keys(sources).sort();
+    for (var k = 0; k < sortedSources.length; k++) {
+        var option = document.createElement('option');
+        option.value = sortedSources[k];
+        var displayName = sortedSources[k].charAt(0).toUpperCase() + sortedSources[k].slice(1);
+        option.textContent = displayName;
+        sourceSelect.appendChild(option);
     }
 }
 
@@ -785,7 +924,6 @@ function applyFilters() {
         
         if (p.length < minLen || p.length > maxLen) continue;
         
-        // Source filter - проверяем, содержит ли source_organism выбранное значение
         if (sourceVal !== 'all') {
             var peptideSources = (p.source_organism || '').toLowerCase().split(',').map(function(s) { 
                 return s.trim(); 
@@ -793,11 +931,9 @@ function applyFilters() {
             if (peptideSources.indexOf(sourceVal) === -1) continue;
         }
         
-        // Disulfide filter
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
-        // PDB filter
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
@@ -1025,7 +1161,6 @@ function displayTableView(container) {
         var url = getPeptideUrl(p.id, p.peptide_name);
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
         
-        // Формируем строку с модификациями
         var modsDisplay = '';
         if (p.modifications && p.modifications.length > 0) {
             var modShort = p.modifications.slice(0, 3).join(', ');
@@ -1060,7 +1195,6 @@ function displayCardView(container) {
         var url = getPeptideUrl(p.id, p.peptide_name);
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; margin-left: 0.5rem;">PDB</span>' : '';
         
-        // Формируем строку с модификациями для карточки
         var modsDisplay = '';
         if (p.modifications && p.modifications.length > 0) {
             var modShort = p.modifications.slice(0, 2).join(', ');
@@ -1148,7 +1282,6 @@ async function initPeptidePage() {
     
     document.title = peptide.peptide_name + ' - BarrPeps';
     
-    // Загружаем только PDB_ID структуры (не Related_PDB)
     var pdbContents = [];
     var pdbIds = [];
     
@@ -1182,6 +1315,7 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     }
     
     var hasPDB = validStructures.length > 0;
+    window.currentPeptideSequence = peptide.sequence_clean;
     
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
@@ -1193,7 +1327,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
     }
     
-    // PDB секция с разделением на Structures и Related
     var pdbHtml = '';
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
         var pdbLinks = [];
@@ -1205,7 +1338,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<div class="detail-row"><span class="detail-label">Available structures:</span><span class="detail-value">' + pdbLinks.join(', ') + '</span></div>';
     }
     
-    // Related PDB Structures - выпадающий список
     if (peptide.related_pdb_ids && peptide.related_pdb_ids.length > 0) {
         var relatedOptions = '';
         for (var i = 0; i < peptide.related_pdb_ids.length; i++) {
@@ -1216,7 +1348,7 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
         pdbHtml += '<div class="detail-row" style="margin-top: 0.75rem;">' +
             '<span class="detail-label">Related PDB:</span>' +
             '<span class="detail-value">' +
-                '<select id="relatedPdbSelect" style="padding: 0.3rem 0.5rem; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.75rem; background: white; margin-right: 0.5rem;" onchange="openRelatedPdb()">' +
+                '<select id="relatedPdbSelect" style="padding: 0.3rem 0.5rem; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.75rem; background: white; margin-right: 0.5rem;">' +
                     '<option value="">-- Select related structure --</option>' +
                     relatedOptions +
                 '</select>' +
@@ -1229,7 +1361,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
         pdbHtml += '</div>';
     }
     
-    // Остальной код experimentsHtml, referencesHtml...
     var experimentsHtml = '';
     if (peptide.experiments && peptide.experiments.length > 0) {
         var uniqueExperiments = [];
@@ -1333,7 +1464,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<p style="color:#718096;">ID: ' + peptide.id + '</p>' +
         '</div>';
     
-    // Structure Viewer - только для PDB_ID
     if (hasPDB) {
         var pdbSelectorHtml = '';
         if (validStructures.length > 1) {
@@ -1412,38 +1542,10 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     
     if (hasPDB && validStructures.length > 0) {
         setTimeout(function() {
-            renderPDBStructure(validStructures[0].content, validStructures[0].id);
+            renderPDBStructure(validStructures[0].content, validStructures[0].id, peptide.sequence_clean);
         }, 100);
     }
 }
-
-// Функция для переключения PDB структуры
-function switchPDB(index) {
-    index = parseInt(index);
-    if (!window.pdbStructures || !window.pdbStructures[index]) return;
-    
-    var structure = window.pdbStructures[index];
-    window.currentPdbIndex = index;
-    window.pdbContentCache = structure.content;
-    
-    // Обновляем отображаемый PDB ID и ссылку
-    var pdbIdSpan = document.getElementById('currentPdbId');
-    var rcsbLink = document.getElementById('rcsbLink');
-    if (pdbIdSpan) pdbIdSpan.textContent = structure.id;
-    if (rcsbLink) rcsbLink.href = 'https://www.rcsb.org/structure/' + structure.id;
-    
-    // Перерисовываем структуру
-    renderPDBStructure(structure.content, structure.id);
-}
-
-function openRelatedPdb() {
-    var select = document.getElementById('relatedPdbSelect');
-    if (select && select.value) {
-        window.open('https://www.rcsb.org/structure/' + select.value, '_blank');
-    }
-}
-
-
 
 // ========== EXPORTS ==========
 window.searchPeptides = applyFilters;
@@ -1455,10 +1557,10 @@ window.resetAllFilters = resetFilters;
 window.downloadFASTA = downloadFASTA;
 window.downloadFullCSV = downloadFullCSV;
 window.setRepresentation = setRepresentation;
+window.switchPDB = switchPDB;
+window.openRelatedPdb = openRelatedPdb;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
-window.openRelatedPdb = openRelatedPdb;
-window.switchPDB = switchPDB;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
