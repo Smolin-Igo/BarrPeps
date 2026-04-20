@@ -677,19 +677,31 @@ function initSourceSelector() {
     for (var i = 0; i < peptidesData.length; i++) {
         var source = peptidesData[i].source_organism;
         if (source && source !== 'N/A' && source !== '') {
-            sources[source] = true;
+            // Разделяем по запятой и обрабатываем каждое значение отдельно
+            var parts = source.split(',').map(function(item) { 
+                return item.trim().toLowerCase(); 
+            });
+            for (var j = 0; j < parts.length; j++) {
+                if (parts[j]) {
+                    sources[parts[j]] = true;
+                }
+            }
         }
     }
     
+    // Очищаем существующие опции кроме первой "All"
     while (sourceSelect.options.length > 1) {
         sourceSelect.remove(1);
     }
     
+    // Сортируем и добавляем опции
     var sortedSources = Object.keys(sources).sort();
     for (var k = 0; k < sortedSources.length; k++) {
         var option = document.createElement('option');
         option.value = sortedSources[k];
-        option.textContent = sortedSources[k];
+        // Делаем первую букву заглавной для отображения
+        var displayName = sortedSources[k].charAt(0).toUpperCase() + sortedSources[k].slice(1);
+        option.textContent = displayName;
         sourceSelect.appendChild(option);
     }
 }
@@ -755,8 +767,13 @@ function applyFilters() {
         
         if (p.length < minLen || p.length > maxLen) continue;
         
-        // Source filter
-        if (sourceVal !== 'all' && p.source_organism !== sourceVal) continue;
+        // Source filter - проверяем, содержит ли source_organism выбранное значение
+        if (sourceVal !== 'all') {
+            var peptideSources = (p.source_organism || '').toLowerCase().split(',').map(function(s) { 
+                return s.trim(); 
+            });
+            if (peptideSources.indexOf(sourceVal) === -1) continue;
+        }
         
         // Disulfide filter
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
