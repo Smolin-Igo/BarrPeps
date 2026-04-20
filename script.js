@@ -653,10 +653,11 @@ function initBrowsePage() {
     displayBrowseResults();
     setupBrowseEventListeners();
     initModificationSelector();
+    initSourceSelector();
 }
 
 function setupBrowseEventListeners() {
-    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'modFilter', 'disulfideFilter', 'pdbFilter'];
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'sourceFilter', 'modFilter', 'disulfideFilter', 'pdbFilter'];
     for (var i = 0; i < inputs.length; i++) {
         var el = document.getElementById(inputs[i]);
         if (el) {
@@ -665,6 +666,31 @@ function setupBrowseEventListeners() {
                 el.addEventListener('keypress', function(e) { if (e.key === 'Enter') applyFilters(); });
             }
         }
+    }
+}
+
+function initSourceSelector() {
+    var sourceSelect = document.getElementById('sourceFilter');
+    if (!sourceSelect) return;
+    
+    var sources = {};
+    for (var i = 0; i < peptidesData.length; i++) {
+        var source = peptidesData[i].source_organism;
+        if (source && source !== 'N/A' && source !== '') {
+            sources[source] = true;
+        }
+    }
+    
+    while (sourceSelect.options.length > 1) {
+        sourceSelect.remove(1);
+    }
+    
+    var sortedSources = Object.keys(sources).sort();
+    for (var k = 0; k < sortedSources.length; k++) {
+        var option = document.createElement('option');
+        option.value = sortedSources[k];
+        option.textContent = sortedSources[k];
+        sourceSelect.appendChild(option);
     }
 }
 
@@ -709,6 +735,7 @@ function checkModification(peptide, modType) {
 
 function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
+    var sourceVal = document.getElementById('sourceFilter') ? document.getElementById('sourceFilter').value : 'all';
     var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
     var disulfideVal = document.getElementById('disulfideFilter') ? document.getElementById('disulfideFilter').value : 'all';
     var pdbVal = document.getElementById('pdbFilter') ? document.getElementById('pdbFilter').value : 'all';
@@ -728,9 +755,14 @@ function applyFilters() {
         
         if (p.length < minLen || p.length > maxLen) continue;
         
+        // Source filter
+        if (sourceVal !== 'all' && p.source_organism !== sourceVal) continue;
+        
+        // Disulfide filter
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
+        // PDB filter
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
@@ -748,6 +780,7 @@ function resetFilters() {
     var searchInput = document.getElementById('searchInput');
     var lengthMin = document.getElementById('lengthMin');
     var lengthMax = document.getElementById('lengthMax');
+    var sourceFilter = document.getElementById('sourceFilter');
     var modFilter = document.getElementById('modFilter');
     var disulfideFilter = document.getElementById('disulfideFilter');
     var pdbFilter = document.getElementById('pdbFilter');
@@ -755,6 +788,7 @@ function resetFilters() {
     if (searchInput) searchInput.value = '';
     if (lengthMin) lengthMin.value = 0;
     if (lengthMax) lengthMax.value = 100;
+    if (sourceFilter) sourceFilter.value = 'all';
     if (modFilter) modFilter.value = 'all';
     if (disulfideFilter) disulfideFilter.value = 'all';
     if (pdbFilter) pdbFilter.value = 'all';
