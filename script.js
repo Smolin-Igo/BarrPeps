@@ -493,11 +493,10 @@ function calculateLengthDistribution() {
     if (lengths.length === 0) return {};
     
     var maxLength = Math.max.apply(null, lengths);
-    var minLength = Math.min.apply(null, lengths);
     var binSize = 5;
     var bins = {};
     
-    // Начинаем с 1 вместо 0
+    // Начинаем с 1
     var startBin = 1;
     var endBin = Math.ceil(maxLength / binSize) * binSize;
     
@@ -509,42 +508,19 @@ function calculateLengthDistribution() {
     
     for (var i = 0; i < lengths.length; i++) {
         var len = lengths[i];
-        var binIndex = Math.floor((len - 1) / binSize); // Смещаем на -1 чтобы 1-5 попали в первый бин
+        var binIndex = Math.floor((len - 1) / binSize);
         var binStart = binIndex * binSize + 1;
         var binEnd = binStart + binSize - 1;
         var binLabel = binStart + '-' + binEnd;
         if (bins[binLabel] !== undefined) bins[binLabel]++;
     }
     
-    // Убираем пустые бины в начале и конце
+    // Убираем ВСЕ бины с нулевым значением
     var filtered = {};
-    var foundNonZero = false;
-    var binKeys = Object.keys(bins).sort(function(a, b) {
-        return parseInt(a.split('-')[0]) - parseInt(b.split('-')[0]);
-    });
-    
-    // Находим первый не нулевой бин
-    var firstNonZeroIndex = 0;
-    for (var i = 0; i < binKeys.length; i++) {
-        if (bins[binKeys[i]] > 0) {
-            firstNonZeroIndex = i;
-            break;
+    for (var label in bins) {
+        if (bins[label] > 0) {
+            filtered[label] = bins[label];
         }
-    }
-    
-    // Находим последний не нулевой бин
-    var lastNonZeroIndex = binKeys.length - 1;
-    for (var i = binKeys.length - 1; i >= 0; i--) {
-        if (bins[binKeys[i]] > 0) {
-            lastNonZeroIndex = i;
-            break;
-        }
-    }
-    
-    // Сохраняем все бины от первого до последнего не нулевого
-    for (var i = firstNonZeroIndex; i <= lastNonZeroIndex; i++) {
-        var label = binKeys[i];
-        filtered[label] = bins[label];
     }
     
     return filtered;
