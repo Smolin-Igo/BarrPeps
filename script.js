@@ -1003,9 +1003,8 @@ function initModificationSelector() {
         for (var j = 0; j < mods.length; j++) {
             var mod = mods[j];
             if (mod && mod !== 'N/A' && mod !== '') {
-                // Убираем подчеркивания для отображения
                 var displayMod = mod.replace(/_/g, ' ');
-                modTypes[displayMod] = mod; // Сохраняем оригинальное значение
+                modTypes[displayMod] = mod;
             }
         }
     }
@@ -1014,8 +1013,8 @@ function initModificationSelector() {
     var html = '';
     for (var k = 0; k < sortedMods.length; k++) {
         var displayMod = sortedMods[k];
-        html += '<div class="multiselect-option" onclick="toggleModOption(this, \'' + modTypes[displayMod] + '\')">' +
-            '<input type="checkbox" value="' + modTypes[displayMod] + '" onclick="event.stopPropagation();">' +
+        html += '<div class="multiselect-option">' +
+            '<input type="checkbox" value="' + modTypes[displayMod] + '" onchange="updateModSelectionFromCheckbox()">' +
             '<label>' + displayMod + '</label>' +
         '</div>';
     }
@@ -1026,7 +1025,8 @@ function initModificationSelector() {
     document.addEventListener('click', function(e) {
         var container = document.getElementById('modMultiselect');
         if (container && !container.contains(e.target)) {
-            document.getElementById('modDropdown').classList.remove('show');
+            var dropdownEl = document.getElementById('modDropdown');
+            if (dropdownEl) dropdownEl.classList.remove('show');
         }
     });
 }
@@ -1034,38 +1034,39 @@ function initModificationSelector() {
 // Переключение выпадающего списка
 function toggleModDropdown() {
     var dropdown = document.getElementById('modDropdown');
-    dropdown.classList.toggle('show');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
 }
 
-// Переключение опции
-function toggleModOption(optionDiv, modValue) {
-    var checkbox = optionDiv.querySelector('input[type="checkbox"]');
-    checkbox.checked = !checkbox.checked;
-    updateModSelection();
-}
-
-// Обновление текста и выбранных модификаций
-function updateModSelection() {
-    var checkboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
+// Обновление выбранных модификаций из чекбоксов
+function updateModSelectionFromCheckbox() {
     selectedMods = [];
     var selectedNames = [];
     
+    var checkboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
     for (var i = 0; i < checkboxes.length; i++) {
         if (checkboxes[i].checked) {
             selectedMods.push(checkboxes[i].value);
-            // Убираем подчеркивания для отображения
             selectedNames.push(checkboxes[i].value.replace(/_/g, ' '));
         }
     }
     
     var textSpan = document.getElementById('modSelectedText');
-    if (selectedNames.length === 0) {
-        textSpan.textContent = 'All';
-    } else if (selectedNames.length === 1) {
-        textSpan.textContent = selectedNames[0];
-    } else {
-        textSpan.textContent = selectedNames.length + ' selected';
+    if (textSpan) {
+        if (selectedNames.length === 0) {
+            textSpan.textContent = 'All';
+        } else if (selectedNames.length === 1) {
+            textSpan.textContent = selectedNames[0];
+        } else {
+            textSpan.textContent = selectedNames.length + ' selected';
+        }
     }
+    
+    console.log('Selected mods:', selectedMods);
+    
+    // Автоматически применяем фильтры при изменении
+    applyFilters();
 }
 
 // Функция для отображения модификаций без подчеркиваний
@@ -1073,6 +1074,7 @@ function formatModification(mod) {
     if (!mod) return '';
     return mod.replace(/_/g, ' ');
 }
+
 function initSourceSelector() {
     var sourceSelect = document.getElementById('sourceFilter');
     if (!sourceSelect) return;
@@ -1125,6 +1127,8 @@ function applyFilters() {
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
     var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
     
+    console.log('Applying filters with selectedMods:', selectedMods);
+    
     var result = [];
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
@@ -1154,6 +1158,7 @@ function applyFilters() {
         // Проверка модификаций - пептид должен иметь ВСЕ выбранные модификации
         if (selectedMods.length > 0) {
             var peptideMods = p.modifications || [];
+            console.log('Checking peptide:', p.peptide_name, 'mods:', peptideMods, 'against:', selectedMods);
             var hasAll = true;
             for (var m = 0; m < selectedMods.length; m++) {
                 if (peptideMods.indexOf(selectedMods[m]) === -1) {
@@ -1167,6 +1172,7 @@ function applyFilters() {
         result.push(p);
     }
     
+    console.log('Filtered results:', result.length);
     filteredPeptides = result;
     updateBrowseStats();
     displayBrowseResults();
@@ -1200,6 +1206,7 @@ function resetFilters() {
     updateBrowseStats();
     displayBrowseResults();
 }
+
 function downloadFASTA() {
     if (filteredPeptides.length === 0) {
         alert('No results to download');
@@ -1793,8 +1800,8 @@ window.openRelatedPdb = openRelatedPdb;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 window.toggleModDropdown = toggleModDropdown;
-window.toggleModOption = toggleModOption;
-window.updateModSelection = updateModSelection;
+window.updateModSelectionFromCheckbox = updateModSelectionFromCheckbox;
+window.formatModification = formatModification;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
