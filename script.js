@@ -63,6 +63,20 @@ function loadExcelFile() {
                 var jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
                 var lowerName = sheetName.toLowerCase();
+                
+                if (lowerName === 'peptides') {
+    peptidesData = jsonData;
+    console.log('Peptides:', peptidesData.length);
+    // Показываем ключи первого пептида
+    if (peptidesData.length > 0) {
+        console.log('Peptide columns:', Object.keys(peptidesData[0]));
+        // Показываем значение literature для первых 5 пептидов
+        for (var i = 0; i < Math.min(5, peptidesData.length); i++) {
+            console.log('Peptide ' + peptidesData[i].peptide_id + ' literature:', peptidesData[i].literature);
+        }
+    }
+}
+                
                 if (lowerName === 'peptides') {
                     peptidesData = jsonData;
                     console.log('Peptides:', peptidesData.length);
