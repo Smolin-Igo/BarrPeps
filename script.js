@@ -71,7 +71,7 @@ function loadExcelFile() {
     if (peptidesData.length > 0) {
         console.log('Peptide columns:', Object.keys(peptidesData[0]));
         // Показываем значение literature для первых 5 пептидов
-        for (var i = 0; i < Math.min(5, peptidesData.length); i++) {
+        for (var i = 0; i < Math.min(10, peptidesData.length); i++) {
             console.log('Peptide ' + peptidesData[i].peptide_id + ' literature:', peptidesData[i].literature);
         }
     }
