@@ -291,11 +291,15 @@
                 </div>
                 
                 <div class="filter-field">
-                    <label>Source/Origin</label>
-                    <select id="sourceFilter">
-                        <option value="all">All</option>
-                    </select>
-                </div>
+    <label>Source/Origin</label>
+    <div class="multiselect-container" id="sourceMultiselect">
+        <div class="multiselect-button" onclick="toggleSourceDropdown()">
+            <span id="sourceSelectedText">All</span>
+        </div>
+        <div class="multiselect-dropdown" id="sourceDropdown">
+        </div>
+    </div>
+</div>
                 
                 <div class="filter-field">
                     <label>Modifications</label>
