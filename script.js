@@ -60,26 +60,26 @@ function loadExcelFile() {
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
                 var worksheet = workbook.Sheets[sheetName];
-                var jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                // Используем другой метод для получения данных
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                    raw: false,  // Не преобразовывать значения
+                    defval: ''   // Значение по умолчанию для пустых ячеек
+                });
                 
                 var lowerName = sheetName.toLowerCase();
-                
-                if (lowerName === 'peptides') {
-    peptidesData = jsonData;
-    console.log('Peptides:', peptidesData.length);
-    // Показываем ключи первого пептида
-    if (peptidesData.length > 0) {
-        console.log('Peptide columns:', Object.keys(peptidesData[0]));
-        // Показываем значение literature для первых 5 пептидов
-        for (var i = 0; i < Math.min(10, peptidesData.length); i++) {
-            console.log('Peptide ' + peptidesData[i].peptide_id + ' literature:', peptidesData[i].literature);
-        }
-    }
-}
-                
                 if (lowerName === 'peptides') {
                     peptidesData = jsonData;
                     console.log('Peptides:', peptidesData.length);
+                    // Проверяем первые несколько пептидов
+                    for (var i = 0; i < Math.min(10, peptidesData.length); i++) {
+                        var p = peptidesData[i];
+                        console.log('Peptide ' + p.peptide_id + ':');
+                        console.log('  - trivial_name:', p.trivial_name);
+                        console.log('  - literature exists:', !!p.literature);
+                        console.log('  - literature length:', p.literature ? p.literature.length : 0);
+                        console.log('  - literature preview:', p.literature ? p.literature.substring(0, 100) : 'EMPTY');
+                    }
                 } else if (lowerName === 'experiments') {
                     experimentsData = jsonData;
                     console.log('Experiments:', experimentsData.length);
