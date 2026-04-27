@@ -75,6 +75,84 @@
             flex-wrap: wrap;
         }
         
+        /* Стили для выпадающего списка с чекбоксами */
+        .multiselect-container {
+            position: relative;
+            width: 100%;
+        }
+        
+        .multiselect-button {
+            width: 100%;
+            padding: 0.4rem 0.5rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            background: white;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .multiselect-button:after {
+            content: '▼';
+            font-size: 0.6rem;
+            margin-left: 0.5rem;
+            color: #718096;
+        }
+        
+        .multiselect-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            margin-top: 2px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .multiselect-dropdown.show {
+            display: block;
+        }
+        
+        .multiselect-option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            border-bottom: 1px solid #f7fafc;
+        }
+        
+        .multiselect-option:hover {
+            background: #f7fafc;
+        }
+        
+        .multiselect-option input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+        
+        .multiselect-option label {
+            cursor: pointer;
+            font-weight: normal;
+            text-transform: none;
+            font-size: 0.75rem;
+            margin: 0;
+            flex: 1;
+        }
+        
         .results-actions {
             display: flex;
             gap: 0.5rem;
@@ -154,7 +232,7 @@
                 font-size: 0.7rem;
             }
             
-            .filter-field input, .filter-field select {
+            .filter-field input, .filter-field select, .multiselect-button {
                 padding: 0.5rem 0.6rem;
                 font-size: 0.8rem;
             }
@@ -221,9 +299,13 @@
                 
                 <div class="filter-field">
                     <label>Modifications</label>
-                    <select id="modFilter">
-                        <option value="all">All</option>
-                    </select>
+                    <div class="multiselect-container" id="modMultiselect">
+                        <div class="multiselect-button" onclick="toggleModDropdown()">
+                            <span id="modSelectedText">All</span>
+                        </div>
+                        <div class="multiselect-dropdown" id="modDropdown">
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="filter-field">

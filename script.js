@@ -989,9 +989,13 @@ function setupBrowseEventListeners() {
     }
 }
 
+// Переменная для хранения выбранных модификаций (массив)
+var selectedMods = [];
+
+// Инициализация мультиселекта модификаций
 function initModificationSelector() {
-    var modSelect = document.getElementById('modFilter');
-    if (!modSelect) return;
+    var dropdown = document.getElementById('modDropdown');
+    if (!dropdown) return;
     
     var modTypes = {};
     for (var i = 0; i < peptidesData.length; i++) {
@@ -999,24 +1003,76 @@ function initModificationSelector() {
         for (var j = 0; j < mods.length; j++) {
             var mod = mods[j];
             if (mod && mod !== 'N/A' && mod !== '') {
-                modTypes[mod] = true;
+                // Убираем подчеркивания для отображения
+                var displayMod = mod.replace(/_/g, ' ');
+                modTypes[displayMod] = mod; // Сохраняем оригинальное значение
             }
         }
     }
     
-    while (modSelect.options.length > 1) {
-        modSelect.remove(1);
+    var sortedMods = Object.keys(modTypes).sort();
+    var html = '';
+    for (var k = 0; k < sortedMods.length; k++) {
+        var displayMod = sortedMods[k];
+        html += '<div class="multiselect-option" onclick="toggleModOption(this, \'' + modTypes[displayMod] + '\')">' +
+            '<input type="checkbox" value="' + modTypes[displayMod] + '" onclick="event.stopPropagation();">' +
+            '<label>' + displayMod + '</label>' +
+        '</div>';
     }
     
-    var sortedTypes = Object.keys(modTypes).sort();
-    for (var k = 0; k < sortedTypes.length; k++) {
-        var option = document.createElement('option');
-        option.value = sortedTypes[k];
-        option.textContent = sortedTypes[k];
-        modSelect.appendChild(option);
+    dropdown.innerHTML = html;
+    
+    // Закрываем выпадающий список при клике вне его
+    document.addEventListener('click', function(e) {
+        var container = document.getElementById('modMultiselect');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('modDropdown').classList.remove('show');
+        }
+    });
+}
+
+// Переключение выпадающего списка
+function toggleModDropdown() {
+    var dropdown = document.getElementById('modDropdown');
+    dropdown.classList.toggle('show');
+}
+
+// Переключение опции
+function toggleModOption(optionDiv, modValue) {
+    var checkbox = optionDiv.querySelector('input[type="checkbox"]');
+    checkbox.checked = !checkbox.checked;
+    updateModSelection();
+}
+
+// Обновление текста и выбранных модификаций
+function updateModSelection() {
+    var checkboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
+    selectedMods = [];
+    var selectedNames = [];
+    
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            selectedMods.push(checkboxes[i].value);
+            // Убираем подчеркивания для отображения
+            selectedNames.push(checkboxes[i].value.replace(/_/g, ' '));
+        }
+    }
+    
+    var textSpan = document.getElementById('modSelectedText');
+    if (selectedNames.length === 0) {
+        textSpan.textContent = 'All';
+    } else if (selectedNames.length === 1) {
+        textSpan.textContent = selectedNames[0];
+    } else {
+        textSpan.textContent = selectedNames.length + ' selected';
     }
 }
 
+// Функция для отображения модификаций без подчеркиваний
+function formatModification(mod) {
+    if (!mod) return '';
+    return mod.replace(/_/g, ' ');
+}
 function initSourceSelector() {
     var sourceSelect = document.getElementById('sourceFilter');
     if (!sourceSelect) return;
@@ -1064,7 +1120,6 @@ function checkModification(peptide, modType) {
 function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
     var sourceVal = document.getElementById('sourceFilter') ? document.getElementById('sourceFilter').value : 'all';
-    var modType = document.getElementById('modFilter') ? document.getElementById('modFilter').value : 'all';
     var disulfideVal = document.getElementById('disulfideFilter') ? document.getElementById('disulfideFilter').value : 'all';
     var pdbVal = document.getElementById('pdbFilter') ? document.getElementById('pdbFilter').value : 'all';
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
@@ -1096,7 +1151,18 @@ function applyFilters() {
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
-        if (!checkModification(p, modType)) continue;
+        // Проверка модификаций - пептид должен иметь ВСЕ выбранные модификации
+        if (selectedMods.length > 0) {
+            var peptideMods = p.modifications || [];
+            var hasAll = true;
+            for (var m = 0; m < selectedMods.length; m++) {
+                if (peptideMods.indexOf(selectedMods[m]) === -1) {
+                    hasAll = false;
+                    break;
+                }
+            }
+            if (!hasAll) continue;
+        }
         
         result.push(p);
     }
@@ -1111,7 +1177,6 @@ function resetFilters() {
     var lengthMin = document.getElementById('lengthMin');
     var lengthMax = document.getElementById('lengthMax');
     var sourceFilter = document.getElementById('sourceFilter');
-    var modFilter = document.getElementById('modFilter');
     var disulfideFilter = document.getElementById('disulfideFilter');
     var pdbFilter = document.getElementById('pdbFilter');
     
@@ -1119,15 +1184,22 @@ function resetFilters() {
     if (lengthMin) lengthMin.value = 0;
     if (lengthMax) lengthMax.value = 100;
     if (sourceFilter) sourceFilter.value = 'all';
-    if (modFilter) modFilter.value = 'all';
     if (disulfideFilter) disulfideFilter.value = 'all';
     if (pdbFilter) pdbFilter.value = 'all';
+    
+    // Сбрасываем чекбоксы модификаций
+    var checkboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
+    for (var i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = false;
+    }
+    selectedMods = [];
+    var textSpan = document.getElementById('modSelectedText');
+    if (textSpan) textSpan.textContent = 'All';
     
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
     displayBrowseResults();
 }
-
 function downloadFASTA() {
     if (filteredPeptides.length === 0) {
         alert('No results to download');
@@ -1321,15 +1393,15 @@ function displayTableView(container) {
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
         
         var modsDisplay = '';
-        if (p.modifications && p.modifications.length > 0) {
-            var modShort = p.modifications.slice(0, 3).join(', ');
-            if (p.modifications.length > 3) {
-                modShort += ' +' + (p.modifications.length - 3);
-            }
-            modsDisplay = '<span style="font-size: 0.65rem; color: #d69e2e;" title="' + p.modifications.join(', ') + '">' + modShort + '</span>';
-        } else {
-            modsDisplay = '<span style="color: #a0aec0; font-size: 0.65rem;">—</span>';
-        }
+if (p.modifications && p.modifications.length > 0) {
+    var modShort = p.modifications.slice(0, 3).map(function(m) { return formatModification(m); }).join(', ');
+    if (p.modifications.length > 3) {
+        modShort += ' +' + (p.modifications.length - 3);
+    }
+    modsDisplay = '<span style="font-size: 0.65rem; color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</span>';
+} else {
+    modsDisplay = '<span style="color: #a0aec0; font-size: 0.65rem;">—</span>';
+}
         
         html += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
             '<td style="padding: 10px 8px; word-break: break-word;"><a href="' + url + '" style="color:#2c5282; font-weight:bold; text-decoration:none;">' + (p.peptide_name || 'N/A') + '</a></td>' +
@@ -1355,13 +1427,13 @@ function displayCardView(container) {
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; margin-left: 0.5rem;">PDB</span>' : '';
         
         var modsDisplay = '';
-        if (p.modifications && p.modifications.length > 0) {
-            var modShort = p.modifications.slice(0, 2).join(', ');
-            if (p.modifications.length > 2) {
-                modShort += ' +' + (p.modifications.length - 2);
-            }
-            modsDisplay = '<div class="card-row"><div class="card-label">Modifications:</div><div class="card-value" style="color: #d69e2e;" title="' + p.modifications.join(', ') + '">' + modShort + '</div></div>';
-        }
+if (p.modifications && p.modifications.length > 0) {
+    var modShort = p.modifications.slice(0, 2).map(function(m) { return formatModification(m); }).join(', ');
+    if (p.modifications.length > 2) {
+        modShort += ' +' + (p.modifications.length - 2);
+    }
+    modsDisplay = '<div class="card-row"><div class="card-label">Modifications:</div><div class="card-value" style="color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</div></div>';
+}
         
         html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
             '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + pdbBadge + '</h3></div>' +
@@ -1477,14 +1549,14 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     window.currentPeptideSequence = peptide.sequence_clean;
     
     var modsHtml = '';
-    if (peptide.modifications && peptide.modifications.length > 0) {
-        var modList = peptide.modifications.join(', ');
-        modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">' + modList + '</span></div></div>';
-    } else {
-        modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-            '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
-    }
+if (peptide.modifications && peptide.modifications.length > 0) {
+    var modList = peptide.modifications.map(function(m) { return formatModification(m); }).join(', ');
+    modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
+        '<div class="detail-row"><span class="detail-value">' + modList + '</span></div></div>';
+} else {
+    modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
+        '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
+}
     
     var pdbHtml = '';
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
@@ -1720,6 +1792,9 @@ window.switchPDB = switchPDB;
 window.openRelatedPdb = openRelatedPdb;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
+window.toggleModDropdown = toggleModDropdown;
+window.toggleModOption = toggleModOption;
+window.updateModSelection = updateModSelection;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
