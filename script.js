@@ -1444,11 +1444,12 @@ function sortBy(column) {
 // ========== REFERENCE FORMATTING FUNCTIONS ==========
 
 function formatLiteratureLinks(literatureStr) {
-    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]') return '';
+    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]' || literatureStr.trim() === '') return '';
     
     var html = '';
     var references = [];
     
+    // Проверяем, является ли это JSON-строкой со словарем (старый формат)
     if (literatureStr.trim().startsWith('{') && literatureStr.trim().endsWith('}')) {
         try {
             var jsonStr = literatureStr.replace(/'/g, '"');
@@ -1478,21 +1479,25 @@ function formatLiteratureLinks(literatureStr) {
                 }
             }
         } catch(e) {
+            console.log('Error parsing literature JSON, treating as plain text');
             references.push(literatureStr);
         }
     } else {
-        var parts = literatureStr.split(' ; ');
-        for (var i = 0; i < parts.length; i++) {
-            var text = parts[i].trim();
-            if (text) {
-                references.push(text);
-            }
+        // Новый формат - просто текст (одна или несколько ссылок)
+        // Может быть одна длинная строка или несколько, разделенных точкой с запятой
+        var text = literatureStr.trim();
+        if (text) {
+            references.push(text);
         }
     }
     
+    // Форматируем ссылки
     for (var i = 0; i < references.length; i++) {
         var refText = references[i];
+        
+        // Делаем DOI кликабельным
         refText = makeDoiClickable(refText);
+        // Делаем PMID кликабельным
         refText = makePmidClickable(refText);
         
         html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
