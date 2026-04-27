@@ -20,6 +20,10 @@ let disulfideBonds = [];
 let lengthChart = null;
 let aaChart = null;
 
+// Multi-select variables
+var selectedMods = [];
+var selectedSources = [];
+
 function getPeptideUrl(peptideId, peptideName) {
     return 'peptide.html?id=' + peptideId + '&name=' + encodeURIComponent(peptideName);
 }
@@ -92,8 +96,8 @@ function loadExcelFile() {
 function useFallbackData() {
     console.log('Using fallback data');
     peptidesData = [
-        { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", sequence_3: "ThrPhePheTyrGlyGlySerArgGlyLysArgAsnAsnPheLysThrGluGluTyr", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
-        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", sequence_3: "GlyIleValGluGlnCysCysThrSerIleCysSerLeuTyrGlnLeuGluAsnTyrCysAsn", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" }
+        { peptide_id: 1, trivial_name: "ANG1005", sequence_1: "TFFYGGSRGKRNNFKTEEY", length: 19, molecular_weight: 5110.41, origin: "synthetic", conformation: "Linear" },
+        { peptide_id: 2, trivial_name: "Insulin", sequence_1: "GIVEQCCTSICSLYQLENYCN", length: 21, molecular_weight: 5807.57, origin: "human", conformation: "Linear" }
     ];
     pdbData = [];
     processAllData();
@@ -301,7 +305,7 @@ function findLongestMatch(seq1, seq2) {
     return maxLength;
 }
 
-function findPeptideChain(pdbContent, targetSequence) {
+function findPeptideResidues(pdbContent, targetSequence) {
     if (!targetSequence) return null;
     
     var lines = pdbContent.split('\n');
@@ -331,7 +335,7 @@ function findPeptideChain(pdbContent, targetSequence) {
             var aa1 = convertThreeToOne(resName);
             if (aa1) {
                 chainSequence += aa1;
-                chains[chainId].residues.push({ resSeq: resSeq, aa: aa1 });
+                chains[chainId].residues.push({ resSeq: resSeq, aa: aa1, iCode: '' });
             }
         }
     }
@@ -344,24 +348,69 @@ function findPeptideChain(pdbContent, targetSequence) {
     }
     
     targetSequence = targetSequence.toUpperCase();
-    var bestMatch = { chain: null, score: 0 };
+    var bestMatch = { chain: null, residues: null, score: 0, startIndex: 0 };
     
     for (var chain in chains) {
         var seq = chains[chain].sequence;
-        if (seq.indexOf(targetSequence) !== -1) {
-            return { chain: chain, match: 'full' };
+        var startIdx = seq.indexOf(targetSequence);
+        
+        if (startIdx !== -1) {
+            var matchedResidues = chains[chain].residues.slice(startIdx, startIdx + targetSequence.length);
+            return { 
+                chain: chain, 
+                residues: matchedResidues, 
+                match: 'full',
+                startIndex: startIdx
+            };
         }
+        
         var matchScore = findLongestMatch(seq, targetSequence);
         if (matchScore > bestMatch.score) {
-            bestMatch = { chain: chain, score: matchScore };
+            bestMatch = { 
+                chain: chain, 
+                score: matchScore,
+                residues: chains[chain].residues
+            };
         }
     }
     
     if (bestMatch.score > targetSequence.length * 0.5) {
-        return { chain: bestMatch.chain, match: 'partial' };
+        return { 
+            chain: bestMatch.chain, 
+            residues: bestMatch.residues, 
+            match: 'partial',
+            startIndex: 0
+        };
     }
     
     return null;
+}
+
+function getRainbowColor(index, total) {
+    if (total <= 1) return 0x00cc88;
+    
+    var ratio = index / (total - 1);
+    
+    var r, g, b;
+    
+    if (ratio < 0.33) {
+        var localRatio = ratio / 0.33;
+        r = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
+        g = Math.floor(100 * (1 - localRatio) + 255 * localRatio);
+        b = Math.floor(255 * (1 - localRatio) + 0 * localRatio);
+    } else if (ratio < 0.66) {
+        var localRatio = (ratio - 0.33) / 0.33;
+        r = Math.floor(0 * (1 - localRatio) + 255 * localRatio);
+        g = Math.floor(255 * (1 - localRatio) + 255 * localRatio);
+        b = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
+    } else {
+        var localRatio = (ratio - 0.66) / 0.34;
+        r = Math.floor(255 * (1 - localRatio) + 255 * localRatio);
+        g = Math.floor(255 * (1 - localRatio) + 0 * localRatio);
+        b = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
+    }
+    
+    return (r << 16) | (g << 8) | b;
 }
 
 function findDisulfideBonds(pdbContent) {
@@ -472,122 +521,6 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence) {
     setRepresentationWithHighlight('cartoon', peptideResidueInfo);
 }
 
-// Находим остатки пептида для градиентной раскраски
-function findPeptideResidues(pdbContent, targetSequence) {
-    if (!targetSequence) return null;
-    
-    var lines = pdbContent.split('\n');
-    var chains = {};
-    var currentChain = null;
-    var chainSequence = '';
-    
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (line.startsWith('ATOM') && line.substring(13, 15).trim() === 'CA') {
-            var chainId = line.substring(21, 22).trim();
-            var resName = line.substring(17, 20).trim();
-            var resSeq = parseInt(line.substring(22, 26).trim());
-            
-            if (currentChain !== chainId) {
-                if (currentChain && chainSequence) {
-                    chains[currentChain] = {
-                        sequence: chainSequence,
-                        residues: chains[currentChain] ? chains[currentChain].residues : []
-                    };
-                }
-                currentChain = chainId;
-                chainSequence = '';
-                chains[chainId] = { sequence: '', residues: [] };
-            }
-            
-            var aa1 = convertThreeToOne(resName);
-            if (aa1) {
-                chainSequence += aa1;
-                chains[chainId].residues.push({ resSeq: resSeq, aa: aa1, iCode: '' });
-            }
-        }
-    }
-    
-    if (currentChain && chainSequence) {
-        chains[currentChain] = {
-            sequence: chainSequence,
-            residues: chains[currentChain] ? chains[currentChain].residues : []
-        };
-    }
-    
-    targetSequence = targetSequence.toUpperCase();
-    var bestMatch = { chain: null, residues: null, score: 0, startIndex: 0 };
-    
-    for (var chain in chains) {
-        var seq = chains[chain].sequence;
-        var startIdx = seq.indexOf(targetSequence);
-        
-        if (startIdx !== -1) {
-            // Точное совпадение
-            var matchedResidues = chains[chain].residues.slice(startIdx, startIdx + targetSequence.length);
-            return { 
-                chain: chain, 
-                residues: matchedResidues, 
-                match: 'full',
-                startIndex: startIdx
-            };
-        }
-        
-        // Ищем частичное совпадение
-        var matchScore = findLongestMatch(seq, targetSequence);
-        if (matchScore > bestMatch.score) {
-            bestMatch = { 
-                chain: chain, 
-                score: matchScore,
-                residues: chains[chain].residues
-            };
-        }
-    }
-    
-    if (bestMatch.score > targetSequence.length * 0.5) {
-        // Для частичного совпадения возвращаем все остатки цепи
-        return { 
-            chain: bestMatch.chain, 
-            residues: bestMatch.residues, 
-            match: 'partial',
-            startIndex: 0
-        };
-    }
-    
-    return null;
-}
-
-// Получить цвет из rainbow градиента (синий -> зеленый -> желтый -> красный)
-function getRainbowColor(index, total) {
-    if (total <= 1) return 0x00cc88; // Бирюзовый для одного остатка
-    
-    var ratio = index / (total - 1);
-    
-    var r, g, b;
-    
-    if (ratio < 0.33) {
-        // Синий -> Голубой -> Зеленый
-        var localRatio = ratio / 0.33;
-        r = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
-        g = Math.floor(100 * (1 - localRatio) + 255 * localRatio);
-        b = Math.floor(255 * (1 - localRatio) + 0 * localRatio);
-    } else if (ratio < 0.66) {
-        // Зеленый -> Желтый
-        var localRatio = (ratio - 0.33) / 0.33;
-        r = Math.floor(0 * (1 - localRatio) + 255 * localRatio);
-        g = Math.floor(255 * (1 - localRatio) + 255 * localRatio);
-        b = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
-    } else {
-        // Желтый -> Красный
-        var localRatio = (ratio - 0.66) / 0.34;
-        r = Math.floor(255 * (1 - localRatio) + 255 * localRatio);
-        g = Math.floor(255 * (1 - localRatio) + 0 * localRatio);
-        b = Math.floor(0 * (1 - localRatio) + 0 * localRatio);
-    }
-    
-    return (r << 16) | (g << 8) | b;
-}
-
 function setRepresentationWithHighlight(type, peptideChainInfo) {
     if (!pdbViewer) return;
     
@@ -599,10 +532,8 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
     
     if (type === 'cartoon') {
         if (peptideChain && peptideResidues && window.highlightPeptide) {
-            // Фон - серый
             pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.4 } });
             
-            // Раскрашиваем пептид градиентом по остаткам
             var totalResidues = peptideResidues.length;
             
             for (var i = 0; i < peptideResidues.length; i++) {
@@ -615,7 +546,6 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
                 );
             }
             
-            // Добавляем легенду для градиента
             var legendContainer = document.querySelector('.structure-legend');
             if (legendContainer) {
                 var oldItem = document.getElementById('peptideLegendItem');
@@ -644,7 +574,6 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
             });
         }
         
-        // Highlight sulfur atoms
         if (window.sulfurInBonds && disulfideBonds.length > 0) {
             for (var i = 0; i < disulfideBonds.length; i++) {
                 var bond = disulfideBonds[i];
@@ -659,7 +588,6 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
         
         pdbViewer.removeAllShapes();
         
-        // Add disulfide bonds
         if (disulfideBonds && disulfideBonds.length > 0) {
             for (var i = 0; i < disulfideBonds.length; i++) {
                 var bond = disulfideBonds[i];
@@ -682,13 +610,11 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
     } 
     else if (type === 'ballAndStick') {
         if (peptideChain && peptideResidues && window.highlightPeptide) {
-            // Фон - серый
             pdbViewer.setStyle({}, { 
                 stick: { color: 0xcccccc, radius: 0.1 },
                 sphere: { color: 0xcccccc, scale: 0.2 }
             });
             
-            // Раскрашиваем пептид градиентом
             var totalResidues = peptideResidues.length;
             
             for (var i = 0; i < peptideResidues.length; i++) {
@@ -759,7 +685,7 @@ function setRepresentationWithHighlight(type, peptideChainInfo) {
 }
 
 function setRepresentation(type) {
-    setRepresentationWithHighlight(type, window.peptideChain || null);
+    setRepresentationWithHighlight(type, window.peptideChain ? { chain: window.peptideChain, residues: [] } : null);
 }
 
 function switchPDB(index) {
@@ -977,7 +903,7 @@ function initBrowsePage() {
 }
 
 function setupBrowseEventListeners() {
-    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'sourceFilter', 'modFilter', 'disulfideFilter', 'pdbFilter'];
+    var inputs = ['searchInput', 'lengthMin', 'lengthMax', 'disulfideFilter', 'pdbFilter'];
     for (var i = 0; i < inputs.length; i++) {
         var el = document.getElementById(inputs[i]);
         if (el) {
@@ -989,10 +915,6 @@ function setupBrowseEventListeners() {
     }
 }
 
-// Переменная для хранения выбранных модификаций (массив)
-var selectedMods = [];
-
-// Инициализация мультиселекта модификаций
 function initModificationSelector() {
     var dropdown = document.getElementById('modDropdown');
     if (!dropdown) return;
@@ -1020,18 +942,8 @@ function initModificationSelector() {
     }
     
     dropdown.innerHTML = html;
-    
-    // Закрываем выпадающий список при клике вне его
-    document.addEventListener('click', function(e) {
-        var container = document.getElementById('modMultiselect');
-        if (container && !container.contains(e.target)) {
-            var dropdownEl = document.getElementById('modDropdown');
-            if (dropdownEl) dropdownEl.classList.remove('show');
-        }
-    });
 }
 
-// Переключение выпадающего списка
 function toggleModDropdown() {
     var dropdown = document.getElementById('modDropdown');
     if (dropdown) {
@@ -1039,7 +951,6 @@ function toggleModDropdown() {
     }
 }
 
-// Обновление выбранных модификаций И ПРИМЕНЕНИЕ ФИЛЬТРОВ
 function updateModSelectionAndFilter() {
     selectedMods = [];
     var selectedNames = [];
@@ -1052,7 +963,6 @@ function updateModSelectionAndFilter() {
         }
     }
     
-    // Обновляем текст на кнопке
     var textSpan = document.getElementById('modSelectedText');
     if (textSpan) {
         if (selectedNames.length === 0) {
@@ -1064,22 +974,14 @@ function updateModSelectionAndFilter() {
         }
     }
     
-    console.log('Selected mods:', selectedMods);
-    
-    // СРАЗУ ПРИМЕНЯЕМ ФИЛЬТРЫ
     applyFilters();
 }
 
-// Функция для отображения модификаций без подчеркиваний
 function formatModification(mod) {
     if (!mod) return '';
     return mod.replace(/_/g, ' ');
 }
 
-// Переменная для хранения выбранных источников (массив)
-var selectedSources = [];
-
-// Инициализация мультиселекта источников
 function initSourceSelector() {
     var dropdown = document.getElementById('sourceDropdown');
     if (!dropdown) return;
@@ -1111,18 +1013,8 @@ function initSourceSelector() {
     }
     
     dropdown.innerHTML = html;
-    
-    // Закрываем выпадающий список при клике вне его
-    document.addEventListener('click', function(e) {
-        var container = document.getElementById('sourceMultiselect');
-        if (container && !container.contains(e.target)) {
-            var dropdownEl = document.getElementById('sourceDropdown');
-            if (dropdownEl) dropdownEl.classList.remove('show');
-        }
-    });
 }
 
-// Переключение выпадающего списка источников
 function toggleSourceDropdown() {
     var dropdown = document.getElementById('sourceDropdown');
     if (dropdown) {
@@ -1130,7 +1022,6 @@ function toggleSourceDropdown() {
     }
 }
 
-// Обновление выбранных источников и применение фильтров
 function updateSourceSelectionAndFilter() {
     selectedSources = [];
     var selectedNames = [];
@@ -1143,7 +1034,6 @@ function updateSourceSelectionAndFilter() {
         }
     }
     
-    // Обновляем текст на кнопке
     var textSpan = document.getElementById('sourceSelectedText');
     if (textSpan) {
         if (selectedNames.length === 0) {
@@ -1155,21 +1045,12 @@ function updateSourceSelectionAndFilter() {
         }
     }
     
-    console.log('Selected sources:', selectedSources);
-    
-    // СРАЗУ ПРИМЕНЯЕМ ФИЛЬТРЫ
     applyFilters();
 }
 
 function updateBrowseStats() {
     var el = document.getElementById('resultsCount');
     if (el) el.textContent = 'Found peptides: ' + filteredPeptides.length;
-}
-
-function checkModification(peptide, modType) {
-    if (modType === 'all' || !modType) return true;
-    var mods = peptide.modifications || [];
-    return mods.indexOf(modType) !== -1;
 }
 
 function applyFilters() {
@@ -1183,7 +1064,6 @@ function applyFilters() {
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
         
-        // Поисковый фильтр
         if (searchTerm) {
             var inName = p.peptide_name && p.peptide_name.toLowerCase().indexOf(searchTerm) !== -1;
             var inSeq = p.sequence_one_letter && p.sequence_one_letter.toLowerCase().indexOf(searchTerm) !== -1;
@@ -1191,10 +1071,9 @@ function applyFilters() {
             if (!inName && !inSeq && !inSource) continue;
         }
         
-        // Фильтр по длине
         if (p.length < minLen || p.length > maxLen) continue;
         
-        // Фильтр по источнику - пептид должен иметь ВСЕ выбранные источники (AND)
+        // Source filter - AND logic
         if (selectedSources.length > 0) {
             var peptideSources = (p.source_organism || '').toLowerCase().split(',').map(function(s) { 
                 return s.trim(); 
@@ -1209,15 +1088,15 @@ function applyFilters() {
             if (!hasAll) continue;
         }
         
-        // Фильтр по дисульфидным связям
+        // Disulfide filter
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
-        // Фильтр по PDB
+        // PDB filter
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
-        // Фильтр по модификациям - пептид должен иметь ВСЕ выбранные модификации (AND)
+        // Modifications filter - AND logic
         if (selectedMods.length > 0) {
             var peptideMods = p.modifications || [];
             var hasAllMods = true;
@@ -1251,7 +1130,7 @@ function resetFilters() {
     if (disulfideFilter) disulfideFilter.value = 'all';
     if (pdbFilter) pdbFilter.value = 'all';
     
-    // Сбрасываем чекбоксы источников
+    // Reset sources
     var sourceCheckboxes = document.querySelectorAll('#sourceDropdown input[type="checkbox"]');
     for (var i = 0; i < sourceCheckboxes.length; i++) {
         sourceCheckboxes[i].checked = false;
@@ -1260,7 +1139,7 @@ function resetFilters() {
     var sourceText = document.getElementById('sourceSelectedText');
     if (sourceText) sourceText.textContent = 'All';
     
-    // Сбрасываем чекбоксы модификаций
+    // Reset mods
     var modCheckboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
     for (var i = 0; i < modCheckboxes.length; i++) {
         modCheckboxes[i].checked = false;
@@ -1467,15 +1346,15 @@ function displayTableView(container) {
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;">Yes</span>' : '<span style="color: #a0aec0;">No</span>';
         
         var modsDisplay = '';
-if (p.modifications && p.modifications.length > 0) {
-    var modShort = p.modifications.slice(0, 3).map(function(m) { return formatModification(m); }).join(', ');
-    if (p.modifications.length > 3) {
-        modShort += ' +' + (p.modifications.length - 3);
-    }
-    modsDisplay = '<span style="font-size: 0.65rem; color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</span>';
-} else {
-    modsDisplay = '<span style="color: #a0aec0; font-size: 0.65rem;">—</span>';
-}
+        if (p.modifications && p.modifications.length > 0) {
+            var modShort = p.modifications.slice(0, 3).map(function(m) { return formatModification(m); }).join(', ');
+            if (p.modifications.length > 3) {
+                modShort += ' +' + (p.modifications.length - 3);
+            }
+            modsDisplay = '<span style="font-size: 0.65rem; color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</span>';
+        } else {
+            modsDisplay = '<span style="color: #a0aec0; font-size: 0.65rem;">—</span>';
+        }
         
         html += '<tr style="border-bottom: 1px solid #e2e8f0;">' +
             '<td style="padding: 10px 8px; word-break: break-word;"><a href="' + url + '" style="color:#2c5282; font-weight:bold; text-decoration:none;">' + (p.peptide_name || 'N/A') + '</a></td>' +
@@ -1501,13 +1380,13 @@ function displayCardView(container) {
         var pdbBadge = p.has_pdb ? '<span style="background: #48bb78; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; margin-left: 0.5rem;">PDB</span>' : '';
         
         var modsDisplay = '';
-if (p.modifications && p.modifications.length > 0) {
-    var modShort = p.modifications.slice(0, 2).map(function(m) { return formatModification(m); }).join(', ');
-    if (p.modifications.length > 2) {
-        modShort += ' +' + (p.modifications.length - 2);
-    }
-    modsDisplay = '<div class="card-row"><div class="card-label">Modifications:</div><div class="card-value" style="color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</div></div>';
-}
+        if (p.modifications && p.modifications.length > 0) {
+            var modShort = p.modifications.slice(0, 2).map(function(m) { return formatModification(m); }).join(', ');
+            if (p.modifications.length > 2) {
+                modShort += ' +' + (p.modifications.length - 2);
+            }
+            modsDisplay = '<div class="card-row"><div class="card-label">Modifications:</div><div class="card-value" style="color: #d69e2e;" title="' + p.modifications.map(function(m) { return formatModification(m); }).join(', ') + '">' + modShort + '</div></div>';
+        }
         
         html += '<div class="peptide-card" onclick="window.location.href=\'' + url + '\'" style="cursor:pointer;">' +
             '<div class="card-header"><h3>' + (p.peptide_name || 'Unnamed') + pdbBadge + '</h3></div>' +
@@ -1562,6 +1441,86 @@ function sortBy(column) {
     displayBrowseResults();
 }
 
+// ========== REFERENCE FORMATTING FUNCTIONS ==========
+
+function formatLiteratureLinks(literatureStr) {
+    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]') return '';
+    
+    var html = '';
+    var references = [];
+    
+    if (literatureStr.trim().startsWith('{') && literatureStr.trim().endsWith('}')) {
+        try {
+            var jsonStr = literatureStr.replace(/'/g, '"');
+            var parsed = JSON.parse(jsonStr);
+            
+            for (var key in parsed) {
+                if (parsed.hasOwnProperty(key) && typeof parsed[key] === 'object') {
+                    var ref = parsed[key];
+                    var refText = '';
+                    
+                    if (ref['Author(s)']) {
+                        refText += ref['Author(s)'];
+                    }
+                    if (ref['Year']) {
+                        refText += ' (' + ref['Year'] + ')';
+                    }
+                    if (ref['Title']) {
+                        refText += ' ' + ref['Title'];
+                    }
+                    if (ref['Journal']) {
+                        refText += ' ' + ref['Journal'];
+                    }
+                    
+                    if (refText) {
+                        references.push(refText);
+                    }
+                }
+            }
+        } catch(e) {
+            references.push(literatureStr);
+        }
+    } else {
+        var parts = literatureStr.split(' ; ');
+        for (var i = 0; i < parts.length; i++) {
+            var text = parts[i].trim();
+            if (text) {
+                references.push(text);
+            }
+        }
+    }
+    
+    for (var i = 0; i < references.length; i++) {
+        var refText = references[i];
+        refText = makeDoiClickable(refText);
+        refText = makePmidClickable(refText);
+        
+        html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+            '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
+        '</div>';
+    }
+    
+    return html;
+}
+
+function makeDoiClickable(text) {
+    if (!text) return '';
+    
+    var doiRegex = /(10\.\d{4,}\/[^\s,;.]+)/g;
+    return text.replace(doiRegex, function(match) {
+        return '<a href="https://doi.org/' + match + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
+    });
+}
+
+function makePmidClickable(text) {
+    if (!text) return '';
+    
+    var pmidRegex = /PMID:?\s*(\d+)/gi;
+    return text.replace(pmidRegex, function(match, pmid) {
+        return '<a href="https://pubmed.ncbi.nlm.nih.gov/' + pmid + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
+    });
+}
+
 // ========== PEPTIDE DETAIL PAGE ==========
 async function initPeptidePage() {
     console.log('Initializing peptide page');
@@ -1605,111 +1564,6 @@ async function initPeptidePage() {
     displayPeptideDetail(peptide, pdbContents, pdbIds);
 }
 
-// Функция для форматирования ссылок из колонки literature
-function formatLiteratureLinks(literatureStr) {
-    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]') return '';
-    
-    var html = '';
-    var references = [];
-    
-    // Проверяем, является ли это JSON-строкой (старый формат со словарем)
-    if (literatureStr.trim().startsWith('{') && literatureStr.trim().endsWith('}')) {
-        try {
-            // Заменяем одинарные кавычки на двойные для JSON
-            var jsonStr = literatureStr.replace(/'/g, '"');
-            var parsed = JSON.parse(jsonStr);
-            
-            for (var key in parsed) {
-                if (parsed.hasOwnProperty(key) && typeof parsed[key] === 'object') {
-                    var ref = parsed[key];
-                    var refText = '';
-                    
-                    if (ref['Author(s)']) {
-                        refText += ref['Author(s)'];
-                    }
-                    if (ref['Year']) {
-                        refText += ' (' + ref['Year'] + ')';
-                    }
-                    if (ref['Title']) {
-                        refText += ' ' + ref['Title'];
-                    }
-                    if (ref['Journal']) {
-                        refText += ' ' + ref['Journal'];
-                    }
-                    
-                    if (refText) {
-                        references.push(refText);
-                    }
-                }
-            }
-        } catch(e) {
-            console.log('Error parsing literature JSON:', e);
-            // Если не удалось распарсить, обрабатываем как обычный текст
-            references.push(literatureStr);
-        }
-    } else {
-        // Новый формат - обычный текст
-        // Разделяем по ' ; ' (точка с запятой с пробелами)
-        var parts = literatureStr.split(' ; ');
-        for (var i = 0; i < parts.length; i++) {
-            var text = parts[i].trim();
-            if (text) {
-                references.push(text);
-            }
-        }
-    }
-    
-    // Форматируем ссылки
-    for (var i = 0; i < references.length; i++) {
-        var refText = references[i];
-        
-        // Делаем DOI кликабельным
-        refText = makeDoiClickable(refText);
-        // Делаем PMID кликабельным
-        refText = makePmidClickable(refText);
-        
-        html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
-            '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
-        '</div>';
-    }
-    
-    return html;
-}
-
-// Функция для форматирования обычной текстовой ссылки
-function formatPlainReference(text) {
-    if (!text) return '';
-    
-    // Убираем лишние пробелы и точки в начале
-    text = text.replace(/^\s*[;.]\s*/, '').trim();
-    
-    // Если текст начинается с цифр (например, "137 Banks W.A..."), 
-    // это может быть номер ссылки, оставляем как есть
-    return text;
-}
-
-// Функция для создания кликабельных DOI
-function makeDoiClickable(text) {
-    if (!text) return '';
-    
-    // Ищем DOI в формате 10.xxxx/xxxxx
-    var doiRegex = /(10\.\d{4,}\/[^\s,;.]+)/g;
-    return text.replace(doiRegex, function(match) {
-        return '<a href="https://doi.org/' + match + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
-    });
-}
-
-// Функция для создания кликабельных PMID
-function makePmidClickable(text) {
-    if (!text) return '';
-    
-    // Ищем PMID: XXXXXXXX или PMID XXXXXXXX
-    var pmidRegex = /PMID:?\s*(\d+)/gi;
-    return text.replace(pmidRegex, function(match, pmid) {
-        return '<a href="https://pubmed.ncbi.nlm.nih.gov/' + pmid + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
-    });
-}
-
 function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     var pdbContentsArray = Array.isArray(pdbContents) ? pdbContents : (pdbContents ? [pdbContents] : []);
     var pdbIdsArray = Array.isArray(pdbIds) ? pdbIds : (pdbIds ? [pdbIds] : []);
@@ -1728,14 +1582,14 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     window.currentPeptideSequence = peptide.sequence_clean;
     
     var modsHtml = '';
-if (peptide.modifications && peptide.modifications.length > 0) {
-    var modList = peptide.modifications.map(function(m) { return formatModification(m); }).join(', ');
-    modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-        '<div class="detail-row"><span class="detail-value">' + modList + '</span></div></div>';
-} else {
-    modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
-        '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
-}
+    if (peptide.modifications && peptide.modifications.length > 0) {
+        var modList = peptide.modifications.map(function(m) { return formatModification(m); }).join(', ');
+        modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
+            '<div class="detail-row"><span class="detail-value">' + modList + '</span></div></div>';
+    } else {
+        modsHtml = '<div class="detail-section"><h3>Modifications</h3>' +
+            '<div class="detail-row"><span class="detail-value">None reported</span></div></div>';
+    }
     
     var pdbHtml = '';
     if (peptide.pdb_ids && peptide.pdb_ids.length > 0) {
@@ -1839,64 +1693,62 @@ if (peptide.modifications && peptide.modifications.length > 0) {
             '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
+    // References section
     var referencesHtml = '';
-var shownRefs = {}; // Для отслеживания уже показанных ссылок
-
-// Сначала собираем ссылки из колонки literature (peptide.notes)
-var literatureHtml = formatLiteratureLinks(peptide.notes || '');
-
-// Собираем ссылки из листа references
-var refsFromSheet = [];
-if (peptide.references && peptide.references.length > 0) {
-    for (var i = 0; i < peptide.references.length; i++) {
-        var ref = peptide.references[i];
-        var authors = ref['authors'] || '';
-        var year = ref['year'] || '';
-        var title = ref['title'] || '';
-        var journal = ref['journal'] || '';
-        
-        var refText = '';
-        if (authors && year && title && journal) {
-            refText = authors + ' (' + year + '). ' + title + '. ' + journal + '.';
-        } else if (authors && year) {
-            refText = authors + ' (' + year + ').';
-        } else if (title) {
-            refText = title;
-        }
-        
-        if (refText && !shownRefs[refText]) {
-            shownRefs[refText] = true;
+    var shownRefs = {};
+    
+    // Get references from literature (notes)
+    var literatureHtml = formatLiteratureLinks(peptide.notes || '');
+    
+    // Get references from references sheet
+    var refsFromSheet = [];
+    if (peptide.references && peptide.references.length > 0) {
+        for (var i = 0; i < peptide.references.length; i++) {
+            var ref = peptide.references[i];
+            var authors = ref['authors'] || '';
+            var year = ref['year'] || '';
+            var title = ref['title'] || '';
+            var journal = ref['journal'] || '';
             
-            // Делаем DOI и PMID кликабельными
-            refText = makeDoiClickable(refText);
-            refText = makePmidClickable(refText);
+            var refText = '';
+            if (authors && year && title && journal) {
+                refText = authors + ' (' + year + '). ' + title + '. ' + journal + '.';
+            } else if (authors && year) {
+                refText = authors + ' (' + year + ').';
+            } else if (title) {
+                refText = title;
+            }
             
-            refsFromSheet.push(refText);
+            if (refText && !shownRefs[refText]) {
+                shownRefs[refText] = true;
+                
+                refText = makeDoiClickable(refText);
+                refText = makePmidClickable(refText);
+                
+                refsFromSheet.push(refText);
+            }
         }
     }
-}
-
-// Объединяем все ссылки
-var allRefsHtml = '';
-
-// Добавляем ссылки из literature
-if (literatureHtml) {
-    allRefsHtml += literatureHtml;
-}
-
-// Добавляем ссылки из листа references (без дубликатов)
-for (var i = 0; i < refsFromSheet.length; i++) {
-    allRefsHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
-        '<span class="detail-value" style="font-size: 0.8rem;">' + refsFromSheet[i] + '</span>' +
-    '</div>';
-}
-
-if (allRefsHtml) {
-    referencesHtml = '<div class="detail-section"><h3>References</h3>' + allRefsHtml + '</div>';
-} else {
-    referencesHtml = '<div class="detail-section"><h3>References</h3>' +
-        '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
-}
+    
+    // Combine all references
+    var allRefsHtml = '';
+    
+    if (literatureHtml) {
+        allRefsHtml += literatureHtml;
+    }
+    
+    for (var i = 0; i < refsFromSheet.length; i++) {
+        allRefsHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+            '<span class="detail-value" style="font-size: 0.8rem;">' + refsFromSheet[i] + '</span>' +
+        '</div>';
+    }
+    
+    if (allRefsHtml) {
+        referencesHtml = '<div class="detail-section"><h3>References</h3>' + allRefsHtml + '</div>';
+    } else {
+        referencesHtml = '<div class="detail-section"><h3>References</h3>' +
+            '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
+    }
     
     var html = '<div class="peptide-detail-container">' +
         '<div style="margin-bottom:1rem;">' +
@@ -2000,13 +1852,13 @@ window.downloadFullCSV = downloadFullCSV;
 window.setRepresentation = setRepresentation;
 window.switchPDB = switchPDB;
 window.openRelatedPdb = openRelatedPdb;
-window.showUnderConstruction = showUnderConstruction;
-window.closeModal = closeModal;
 window.toggleModDropdown = toggleModDropdown;
 window.updateModSelectionAndFilter = updateModSelectionAndFilter;
 window.toggleSourceDropdown = toggleSourceDropdown;
 window.updateSourceSelectionAndFilter = updateSourceSelectionAndFilter;
 window.formatModification = formatModification;
+window.showUnderConstruction = showUnderConstruction;
+window.closeModal = closeModal;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
