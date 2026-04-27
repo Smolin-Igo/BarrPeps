@@ -1615,62 +1615,62 @@ function formatLiteratureLinks(literatureStr) {
     // Проверяем, является ли это JSON-строкой (старый формат со словарем)
     if (literatureStr.trim().startsWith('{') && literatureStr.trim().endsWith('}')) {
         try {
-            // Пробуем распарсить как JSON
-            var parsed = JSON.parse(literatureStr.replace(/'/g, '"'));
+            // Заменяем одинарные кавычки на двойные для JSON
+            var jsonStr = literatureStr.replace(/'/g, '"');
+            var parsed = JSON.parse(jsonStr);
             
-            // Проходим по всем ключам (ref_id)
             for (var key in parsed) {
-                if (parsed.hasOwnProperty(key)) {
+                if (parsed.hasOwnProperty(key) && typeof parsed[key] === 'object') {
                     var ref = parsed[key];
-                    references.push({
-                        authors: ref['Author(s)'] || '',
-                        title: ref['Title'] || '',
-                        year: ref['Year'] || '',
-                        journal: ref['Journal'] || ''
-                    });
+                    var refText = '';
+                    
+                    if (ref['Author(s)']) {
+                        refText += ref['Author(s)'];
+                    }
+                    if (ref['Year']) {
+                        refText += ' (' + ref['Year'] + ')';
+                    }
+                    if (ref['Title']) {
+                        refText += ' ' + ref['Title'];
+                    }
+                    if (ref['Journal']) {
+                        refText += ' ' + ref['Journal'];
+                    }
+                    
+                    if (refText) {
+                        references.push(refText);
+                    }
                 }
             }
         } catch(e) {
+            console.log('Error parsing literature JSON:', e);
             // Если не удалось распарсить, обрабатываем как обычный текст
-            references.push({ text: literatureStr });
+            references.push(literatureStr);
         }
     } else {
-        // Новый формат - обычный текст, может содержать несколько ссылок разделенных ';'
+        // Новый формат - обычный текст
+        // Разделяем по ' ; ' (точка с запятой с пробелами)
         var parts = literatureStr.split(' ; ');
         for (var i = 0; i < parts.length; i++) {
             var text = parts[i].trim();
             if (text) {
-                references.push({ text: text });
+                references.push(text);
             }
         }
     }
     
     // Форматируем ссылки
     for (var i = 0; i < references.length; i++) {
-        var ref = references[i];
-        var refText = '';
+        var refText = references[i];
         
-        if (ref.text) {
-            // Новый формат - обычный текст
-            refText = formatPlainReference(ref.text);
-        } else if (ref.authors) {
-            // Старый формат - структурированный
-            refText = ref.authors;
-            if (ref.year) refText += ' (' + ref.year + ')';
-            if (ref.title) refText += ' ' + ref.title;
-            if (ref.journal) refText += ' ' + ref.journal;
-        }
+        // Делаем DOI кликабельным
+        refText = makeDoiClickable(refText);
+        // Делаем PMID кликабельным
+        refText = makePmidClickable(refText);
         
-        if (refText) {
-            // Делаем DOI кликабельным
-            refText = makeDoiClickable(refText);
-            // Делаем PMID кликабельным
-            refText = makePmidClickable(refText);
-            
-            html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
-                '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
-            '</div>';
-        }
+        html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+            '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
+        '</div>';
     }
     
     return html;
@@ -1840,19 +1840,14 @@ if (peptide.modifications && peptide.modifications.length > 0) {
     }
     
     var referencesHtml = '';
-// Сначала пробуем отобразить ссылки из колонки literature
+var shownRefs = {}; // Для отслеживания уже показанных ссылок
+
+// Сначала собираем ссылки из колонки literature (peptide.notes)
 var literatureHtml = formatLiteratureLinks(peptide.notes || '');
 
-// Также проверяем references из отдельного листа
+// Собираем ссылки из листа references
+var refsFromSheet = [];
 if (peptide.references && peptide.references.length > 0) {
-    referencesHtml = '<div class="detail-section"><h3>References</h3>';
-    
-    // Если есть ссылки из literature, показываем их первыми
-    if (literatureHtml) {
-        referencesHtml += literatureHtml;
-    }
-    
-    // Добавляем ссылки из листа references
     for (var i = 0; i < peptide.references.length; i++) {
         var ref = peptide.references[i];
         var authors = ref['authors'] || '';
@@ -1867,22 +1862,37 @@ if (peptide.references && peptide.references.length > 0) {
             refText = authors + ' (' + year + ').';
         } else if (title) {
             refText = title;
-        } else {
-            refText = 'Reference ' + (i + 1);
         }
         
-        // Делаем DOI и PMID кликабельными
-        refText = makeDoiClickable(refText);
-        refText = makePmidClickable(refText);
-        
-        referencesHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
-            '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
-        '</div>';
+        if (refText && !shownRefs[refText]) {
+            shownRefs[refText] = true;
+            
+            // Делаем DOI и PMID кликабельными
+            refText = makeDoiClickable(refText);
+            refText = makePmidClickable(refText);
+            
+            refsFromSheet.push(refText);
+        }
     }
-    referencesHtml += '</div>';
-} else if (literatureHtml) {
-    // Если есть только ссылки из literature
-    referencesHtml = '<div class="detail-section"><h3>References</h3>' + literatureHtml + '</div>';
+}
+
+// Объединяем все ссылки
+var allRefsHtml = '';
+
+// Добавляем ссылки из literature
+if (literatureHtml) {
+    allRefsHtml += literatureHtml;
+}
+
+// Добавляем ссылки из листа references (без дубликатов)
+for (var i = 0; i < refsFromSheet.length; i++) {
+    allRefsHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+        '<span class="detail-value" style="font-size: 0.8rem;">' + refsFromSheet[i] + '</span>' +
+    '</div>';
+}
+
+if (allRefsHtml) {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' + allRefsHtml + '</div>';
 } else {
     referencesHtml = '<div class="detail-section"><h3>References</h3>' +
         '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
