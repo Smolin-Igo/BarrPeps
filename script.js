@@ -1014,7 +1014,7 @@ function initModificationSelector() {
     for (var k = 0; k < sortedMods.length; k++) {
         var displayMod = sortedMods[k];
         html += '<div class="multiselect-option">' +
-            '<input type="checkbox" value="' + modTypes[displayMod] + '" onchange="updateModSelectionFromCheckbox()">' +
+            '<input type="checkbox" value="' + modTypes[displayMod] + '" onchange="updateModSelectionAndFilter()">' +
             '<label>' + displayMod + '</label>' +
         '</div>';
     }
@@ -1039,8 +1039,8 @@ function toggleModDropdown() {
     }
 }
 
-// Обновление выбранных модификаций из чекбоксов
-function updateModSelectionFromCheckbox() {
+// Обновление выбранных модификаций И ПРИМЕНЕНИЕ ФИЛЬТРОВ
+function updateModSelectionAndFilter() {
     selectedMods = [];
     var selectedNames = [];
     
@@ -1052,6 +1052,7 @@ function updateModSelectionFromCheckbox() {
         }
     }
     
+    // Обновляем текст на кнопке
     var textSpan = document.getElementById('modSelectedText');
     if (textSpan) {
         if (selectedNames.length === 0) {
@@ -1065,7 +1066,7 @@ function updateModSelectionFromCheckbox() {
     
     console.log('Selected mods:', selectedMods);
     
-    // Автоматически применяем фильтры при изменении
+    // СРАЗУ ПРИМЕНЯЕМ ФИЛЬТРЫ
     applyFilters();
 }
 
@@ -1127,12 +1128,11 @@ function applyFilters() {
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
     var maxLen = (document.getElementById('lengthMax') ? parseInt(document.getElementById('lengthMax').value) : 1000) || 1000;
     
-    console.log('Applying filters with selectedMods:', selectedMods);
-    
     var result = [];
     for (var i = 0; i < peptidesData.length; i++) {
         var p = peptidesData[i];
         
+        // Поисковый фильтр
         if (searchTerm) {
             var inName = p.peptide_name && p.peptide_name.toLowerCase().indexOf(searchTerm) !== -1;
             var inSeq = p.sequence_one_letter && p.sequence_one_letter.toLowerCase().indexOf(searchTerm) !== -1;
@@ -1140,8 +1140,10 @@ function applyFilters() {
             if (!inName && !inSeq && !inSource) continue;
         }
         
+        // Фильтр по длине
         if (p.length < minLen || p.length > maxLen) continue;
         
+        // Фильтр по источнику
         if (sourceVal !== 'all') {
             var peptideSources = (p.source_organism || '').toLowerCase().split(',').map(function(s) { 
                 return s.trim(); 
@@ -1149,16 +1151,17 @@ function applyFilters() {
             if (peptideSources.indexOf(sourceVal) === -1) continue;
         }
         
+        // Фильтр по дисульфидным связям
         if (disulfideVal === 'yes' && (!p.disulfide_bridge || p.disulfide_bridge.toLowerCase() === 'no' || p.disulfide_bridge === '')) continue;
         if (disulfideVal === 'no' && (p.disulfide_bridge && p.disulfide_bridge.toLowerCase() !== 'no')) continue;
         
+        // Фильтр по PDB
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
-        // Проверка модификаций - пептид должен иметь ВСЕ выбранные модификации
+        // Фильтр по модификациям - пептид должен иметь ВСЕ выбранные модификации
         if (selectedMods.length > 0) {
             var peptideMods = p.modifications || [];
-            console.log('Checking peptide:', p.peptide_name, 'mods:', peptideMods, 'against:', selectedMods);
             var hasAll = true;
             for (var m = 0; m < selectedMods.length; m++) {
                 if (peptideMods.indexOf(selectedMods[m]) === -1) {
@@ -1172,7 +1175,6 @@ function applyFilters() {
         result.push(p);
     }
     
-    console.log('Filtered results:', result.length);
     filteredPeptides = result;
     updateBrowseStats();
     displayBrowseResults();
@@ -1800,7 +1802,7 @@ window.openRelatedPdb = openRelatedPdb;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 window.toggleModDropdown = toggleModDropdown;
-window.updateModSelectionFromCheckbox = updateModSelectionFromCheckbox;
+window.updateModSelectionAndFilter = updateModSelectionAndFilter;
 window.formatModification = formatModification;
 
 // Initialize
