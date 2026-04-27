@@ -237,7 +237,7 @@ function processAllData() {
             pdb_ids: uniquePdbIds,
             related_pdb_ids: uniqueRelatedPdbIds,
             has_pdb: hasPDB,
-            notes: p['literature'] || ''
+            notes: p['literature'] || p['Literature'] || p['LITERATURE'] || ''
         });
     }
     
