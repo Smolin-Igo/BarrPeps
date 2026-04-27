@@ -1693,16 +1693,21 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
-    // References section
-    var referencesHtml = '';
-    var shownRefs = {};
-    
-    // Get references from literature (notes)
-    var literatureHtml = formatLiteratureLinks(peptide.notes || '');
-    
-    // Get references from references sheet
-    var refsFromSheet = [];
+    // References section - показываем ТОЛЬКО из literature (peptide.notes)
+var referencesHtml = '';
+
+// Получаем ссылки из колонки literature
+var literatureHtml = formatLiteratureLinks(peptide.notes || '');
+
+// Если есть ссылки в literature, показываем только их
+if (literatureHtml) {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' + literatureHtml + '</div>';
+} else {
+    // Если в literature пусто, тогда пробуем references из листа
     if (peptide.references && peptide.references.length > 0) {
+        var shownRefs = {};
+        var refsHtml = '';
+        
         for (var i = 0; i < peptide.references.length; i++) {
             var ref = peptide.references[i];
             var authors = ref['authors'] || '';
@@ -1721,34 +1726,25 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             
             if (refText && !shownRefs[refText]) {
                 shownRefs[refText] = true;
-                
                 refText = makeDoiClickable(refText);
                 refText = makePmidClickable(refText);
                 
-                refsFromSheet.push(refText);
+                refsHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+                    '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span></div>';
             }
         }
-    }
-    
-    // Combine all references
-    var allRefsHtml = '';
-    
-    if (literatureHtml) {
-        allRefsHtml += literatureHtml;
-    }
-    
-    for (var i = 0; i < refsFromSheet.length; i++) {
-        allRefsHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
-            '<span class="detail-value" style="font-size: 0.8rem;">' + refsFromSheet[i] + '</span>' +
-        '</div>';
-    }
-    
-    if (allRefsHtml) {
-        referencesHtml = '<div class="detail-section"><h3>References</h3>' + allRefsHtml + '</div>';
+        
+        if (refsHtml) {
+            referencesHtml = '<div class="detail-section"><h3>References</h3>' + refsHtml + '</div>';
+        } else {
+            referencesHtml = '<div class="detail-section"><h3>References</h3>' +
+                '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
+        }
     } else {
         referencesHtml = '<div class="detail-section"><h3>References</h3>' +
             '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
     }
+}
     
     var html = '<div class="peptide-detail-container">' +
         '<div style="margin-bottom:1rem;">' +
