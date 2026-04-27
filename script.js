@@ -1444,7 +1444,14 @@ function sortBy(column) {
 // ========== REFERENCE FORMATTING FUNCTIONS ==========
 
 function formatLiteratureLinks(literatureStr) {
-    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]' || literatureStr.trim() === '') return '';
+    console.log('formatLiteratureLinks input:', literatureStr);
+    console.log('formatLiteratureLinks input length:', literatureStr ? literatureStr.length : 0);
+    console.log('formatLiteratureLinks input type:', typeof literatureStr);
+    
+    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]' || literatureStr.trim() === '') {
+        console.log('formatLiteratureLinks: empty or invalid input, returning empty');
+        return '';
+    }
     
     var html = '';
     var references = [];
@@ -1585,6 +1592,9 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     
     var hasPDB = validStructures.length > 0;
     window.currentPeptideSequence = peptide.sequence_clean;
+    console.log('Peptide notes (literature):', peptide.notes);
+console.log('Peptide notes length:', peptide.notes ? peptide.notes.length : 0);
+console.log('Peptide notes type:', typeof peptide.notes);
     
     var modsHtml = '';
     if (peptide.modifications && peptide.modifications.length > 0) {
