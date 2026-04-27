@@ -233,7 +233,7 @@ function processAllData() {
             pdb_ids: uniquePdbIds,
             related_pdb_ids: uniqueRelatedPdbIds,
             has_pdb: hasPDB,
-            notes: p['notes'] || ''
+            notes: p['literature'] || ''
         });
     }
     
@@ -1605,6 +1605,111 @@ async function initPeptidePage() {
     displayPeptideDetail(peptide, pdbContents, pdbIds);
 }
 
+// Функция для форматирования ссылок из колонки literature
+function formatLiteratureLinks(literatureStr) {
+    if (!literatureStr || literatureStr === '{}' || literatureStr === '[]') return '';
+    
+    var html = '';
+    var references = [];
+    
+    // Проверяем, является ли это JSON-строкой (старый формат со словарем)
+    if (literatureStr.trim().startsWith('{') && literatureStr.trim().endsWith('}')) {
+        try {
+            // Пробуем распарсить как JSON
+            var parsed = JSON.parse(literatureStr.replace(/'/g, '"'));
+            
+            // Проходим по всем ключам (ref_id)
+            for (var key in parsed) {
+                if (parsed.hasOwnProperty(key)) {
+                    var ref = parsed[key];
+                    references.push({
+                        authors: ref['Author(s)'] || '',
+                        title: ref['Title'] || '',
+                        year: ref['Year'] || '',
+                        journal: ref['Journal'] || ''
+                    });
+                }
+            }
+        } catch(e) {
+            // Если не удалось распарсить, обрабатываем как обычный текст
+            references.push({ text: literatureStr });
+        }
+    } else {
+        // Новый формат - обычный текст, может содержать несколько ссылок разделенных ';'
+        var parts = literatureStr.split(' ; ');
+        for (var i = 0; i < parts.length; i++) {
+            var text = parts[i].trim();
+            if (text) {
+                references.push({ text: text });
+            }
+        }
+    }
+    
+    // Форматируем ссылки
+    for (var i = 0; i < references.length; i++) {
+        var ref = references[i];
+        var refText = '';
+        
+        if (ref.text) {
+            // Новый формат - обычный текст
+            refText = formatPlainReference(ref.text);
+        } else if (ref.authors) {
+            // Старый формат - структурированный
+            refText = ref.authors;
+            if (ref.year) refText += ' (' + ref.year + ')';
+            if (ref.title) refText += ' ' + ref.title;
+            if (ref.journal) refText += ' ' + ref.journal;
+        }
+        
+        if (refText) {
+            // Делаем DOI кликабельным
+            refText = makeDoiClickable(refText);
+            // Делаем PMID кликабельным
+            refText = makePmidClickable(refText);
+            
+            html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+                '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
+            '</div>';
+        }
+    }
+    
+    return html;
+}
+
+// Функция для форматирования обычной текстовой ссылки
+function formatPlainReference(text) {
+    if (!text) return '';
+    
+    // Убираем лишние пробелы и точки в начале
+    text = text.replace(/^\s*[;.]\s*/, '').trim();
+    
+    // Если текст начинается с цифр (например, "137 Banks W.A..."), 
+    // это может быть номер ссылки, оставляем как есть
+    return text;
+}
+
+// Функция для создания кликабельных DOI
+function makeDoiClickable(text) {
+    if (!text) return '';
+    
+    // Ищем DOI в формате 10.xxxx/xxxxx
+    var doiRegex = /(10\.\d{4,}\/[^\s,;.]+)/g;
+    return text.replace(doiRegex, function(match) {
+        return '<a href="https://doi.org/' + match + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
+    });
+}
+
+// Функция для создания кликабельных PMID
+function makePmidClickable(text) {
+    if (!text) return '';
+    
+    // Ищем PMID: XXXXXXXX или PMID XXXXXXXX
+    var pmidRegex = /PMID:?\s*(\d+)/gi;
+    return text.replace(pmidRegex, function(match, pmid) {
+        return '<a href="https://pubmed.ncbi.nlm.nih.gov/' + pmid + '" target="_blank" style="color: #4299e1; text-decoration: none;">' + match + '</a>';
+    });
+}
+
 function displayPeptideDetail(peptide, pdbContents, pdbIds) {
     var pdbContentsArray = Array.isArray(pdbContents) ? pdbContents : (pdbContents ? [pdbContents] : []);
     var pdbIdsArray = Array.isArray(pdbIds) ? pdbIds : (pdbIds ? [pdbIds] : []);
@@ -1735,32 +1840,53 @@ if (peptide.modifications && peptide.modifications.length > 0) {
     }
     
     var referencesHtml = '';
-    if (peptide.references && peptide.references.length > 0) {
-        referencesHtml = '<div class="detail-section"><h3>References</h3>';
-        for (var i = 0; i < peptide.references.length; i++) {
-            var ref = peptide.references[i];
-            var authors = ref['authors'] || '';
-            var year = ref['year'] || '';
-            var title = ref['title'] || '';
-            var journal = ref['journal'] || '';
-            
-            var refText = '';
-            if (authors && year && title && journal) {
-                refText = authors + ' (' + year + '). ' + title + '. ' + journal + '.';
-            } else if (authors && year) {
-                refText = authors + ' (' + year + ').';
-            } else if (title) {
-                refText = title;
-            } else {
-                refText = 'Reference ' + (i + 1);
-            }
-            referencesHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;"><span class="detail-value">' + refText + '</span></div>';
-        }
-        referencesHtml += '</div>';
-    } else {
-        referencesHtml = '<div class="detail-section"><h3>References</h3>' +
-            '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
+// Сначала пробуем отобразить ссылки из колонки literature
+var literatureHtml = formatLiteratureLinks(peptide.notes || '');
+
+// Также проверяем references из отдельного листа
+if (peptide.references && peptide.references.length > 0) {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>';
+    
+    // Если есть ссылки из literature, показываем их первыми
+    if (literatureHtml) {
+        referencesHtml += literatureHtml;
     }
+    
+    // Добавляем ссылки из листа references
+    for (var i = 0; i < peptide.references.length; i++) {
+        var ref = peptide.references[i];
+        var authors = ref['authors'] || '';
+        var year = ref['year'] || '';
+        var title = ref['title'] || '';
+        var journal = ref['journal'] || '';
+        
+        var refText = '';
+        if (authors && year && title && journal) {
+            refText = authors + ' (' + year + '). ' + title + '. ' + journal + '.';
+        } else if (authors && year) {
+            refText = authors + ' (' + year + ').';
+        } else if (title) {
+            refText = title;
+        } else {
+            refText = 'Reference ' + (i + 1);
+        }
+        
+        // Делаем DOI и PMID кликабельными
+        refText = makeDoiClickable(refText);
+        refText = makePmidClickable(refText);
+        
+        referencesHtml += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
+            '<span class="detail-value" style="font-size: 0.8rem;">' + refText + '</span>' +
+        '</div>';
+    }
+    referencesHtml += '</div>';
+} else if (literatureHtml) {
+    // Если есть только ссылки из literature
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' + literatureHtml + '</div>';
+} else {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' +
+        '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
+}
     
     var html = '<div class="peptide-detail-container">' +
         '<div style="margin-bottom:1rem;">' +
