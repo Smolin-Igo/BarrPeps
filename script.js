@@ -1076,37 +1076,89 @@ function formatModification(mod) {
     return mod.replace(/_/g, ' ');
 }
 
+// Переменная для хранения выбранных источников (массив)
+var selectedSources = [];
+
+// Инициализация мультиселекта источников
 function initSourceSelector() {
-    var sourceSelect = document.getElementById('sourceFilter');
-    if (!sourceSelect) return;
+    var dropdown = document.getElementById('sourceDropdown');
+    if (!dropdown) return;
     
     var sources = {};
     for (var i = 0; i < peptidesData.length; i++) {
         var source = peptidesData[i].source_organism;
         if (source && source !== 'N/A' && source !== '') {
             var parts = source.split(',').map(function(item) { 
-                return item.trim().toLowerCase(); 
+                return item.trim(); 
             });
             for (var j = 0; j < parts.length; j++) {
                 if (parts[j]) {
-                    sources[parts[j]] = true;
+                    var displaySource = parts[j].charAt(0).toUpperCase() + parts[j].slice(1).toLowerCase();
+                    sources[displaySource] = parts[j].toLowerCase();
                 }
             }
         }
     }
     
-    while (sourceSelect.options.length > 1) {
-        sourceSelect.remove(1);
+    var sortedSources = Object.keys(sources).sort();
+    var html = '';
+    for (var k = 0; k < sortedSources.length; k++) {
+        var displaySource = sortedSources[k];
+        html += '<div class="multiselect-option">' +
+            '<input type="checkbox" value="' + sources[displaySource] + '" onchange="updateSourceSelectionAndFilter()">' +
+            '<label>' + displaySource + '</label>' +
+        '</div>';
     }
     
-    var sortedSources = Object.keys(sources).sort();
-    for (var k = 0; k < sortedSources.length; k++) {
-        var option = document.createElement('option');
-        option.value = sortedSources[k];
-        var displayName = sortedSources[k].charAt(0).toUpperCase() + sortedSources[k].slice(1);
-        option.textContent = displayName;
-        sourceSelect.appendChild(option);
+    dropdown.innerHTML = html;
+    
+    // Закрываем выпадающий список при клике вне его
+    document.addEventListener('click', function(e) {
+        var container = document.getElementById('sourceMultiselect');
+        if (container && !container.contains(e.target)) {
+            var dropdownEl = document.getElementById('sourceDropdown');
+            if (dropdownEl) dropdownEl.classList.remove('show');
+        }
+    });
+}
+
+// Переключение выпадающего списка источников
+function toggleSourceDropdown() {
+    var dropdown = document.getElementById('sourceDropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
     }
+}
+
+// Обновление выбранных источников и применение фильтров
+function updateSourceSelectionAndFilter() {
+    selectedSources = [];
+    var selectedNames = [];
+    
+    var checkboxes = document.querySelectorAll('#sourceDropdown input[type="checkbox"]');
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            selectedSources.push(checkboxes[i].value);
+            selectedNames.push(checkboxes[i].value.charAt(0).toUpperCase() + checkboxes[i].value.slice(1));
+        }
+    }
+    
+    // Обновляем текст на кнопке
+    var textSpan = document.getElementById('sourceSelectedText');
+    if (textSpan) {
+        if (selectedNames.length === 0) {
+            textSpan.textContent = 'All';
+        } else if (selectedNames.length === 1) {
+            textSpan.textContent = selectedNames[0];
+        } else {
+            textSpan.textContent = selectedNames.length + ' selected';
+        }
+    }
+    
+    console.log('Selected sources:', selectedSources);
+    
+    // СРАЗУ ПРИМЕНЯЕМ ФИЛЬТРЫ
+    applyFilters();
 }
 
 function updateBrowseStats() {
@@ -1122,7 +1174,6 @@ function checkModification(peptide, modType) {
 
 function applyFilters() {
     var searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
-    var sourceVal = document.getElementById('sourceFilter') ? document.getElementById('sourceFilter').value : 'all';
     var disulfideVal = document.getElementById('disulfideFilter') ? document.getElementById('disulfideFilter').value : 'all';
     var pdbVal = document.getElementById('pdbFilter') ? document.getElementById('pdbFilter').value : 'all';
     var minLen = (document.getElementById('lengthMin') ? parseInt(document.getElementById('lengthMin').value) : 0) || 0;
@@ -1143,12 +1194,19 @@ function applyFilters() {
         // Фильтр по длине
         if (p.length < minLen || p.length > maxLen) continue;
         
-        // Фильтр по источнику
-        if (sourceVal !== 'all') {
+        // Фильтр по источнику - пептид должен иметь ВСЕ выбранные источники (AND)
+        if (selectedSources.length > 0) {
             var peptideSources = (p.source_organism || '').toLowerCase().split(',').map(function(s) { 
                 return s.trim(); 
             });
-            if (peptideSources.indexOf(sourceVal) === -1) continue;
+            var hasAll = true;
+            for (var s = 0; s < selectedSources.length; s++) {
+                if (peptideSources.indexOf(selectedSources[s]) === -1) {
+                    hasAll = false;
+                    break;
+                }
+            }
+            if (!hasAll) continue;
         }
         
         // Фильтр по дисульфидным связям
@@ -1159,17 +1217,17 @@ function applyFilters() {
         if (pdbVal === 'yes' && !p.has_pdb) continue;
         if (pdbVal === 'no' && p.has_pdb) continue;
         
-        // Фильтр по модификациям - пептид должен иметь ВСЕ выбранные модификации
+        // Фильтр по модификациям - пептид должен иметь ВСЕ выбранные модификации (AND)
         if (selectedMods.length > 0) {
             var peptideMods = p.modifications || [];
-            var hasAll = true;
+            var hasAllMods = true;
             for (var m = 0; m < selectedMods.length; m++) {
                 if (peptideMods.indexOf(selectedMods[m]) === -1) {
-                    hasAll = false;
+                    hasAllMods = false;
                     break;
                 }
             }
-            if (!hasAll) continue;
+            if (!hasAllMods) continue;
         }
         
         result.push(p);
@@ -1184,25 +1242,32 @@ function resetFilters() {
     var searchInput = document.getElementById('searchInput');
     var lengthMin = document.getElementById('lengthMin');
     var lengthMax = document.getElementById('lengthMax');
-    var sourceFilter = document.getElementById('sourceFilter');
     var disulfideFilter = document.getElementById('disulfideFilter');
     var pdbFilter = document.getElementById('pdbFilter');
     
     if (searchInput) searchInput.value = '';
     if (lengthMin) lengthMin.value = 0;
     if (lengthMax) lengthMax.value = 100;
-    if (sourceFilter) sourceFilter.value = 'all';
     if (disulfideFilter) disulfideFilter.value = 'all';
     if (pdbFilter) pdbFilter.value = 'all';
     
+    // Сбрасываем чекбоксы источников
+    var sourceCheckboxes = document.querySelectorAll('#sourceDropdown input[type="checkbox"]');
+    for (var i = 0; i < sourceCheckboxes.length; i++) {
+        sourceCheckboxes[i].checked = false;
+    }
+    selectedSources = [];
+    var sourceText = document.getElementById('sourceSelectedText');
+    if (sourceText) sourceText.textContent = 'All';
+    
     // Сбрасываем чекбоксы модификаций
-    var checkboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
-    for (var i = 0; i < checkboxes.length; i++) {
-        checkboxes[i].checked = false;
+    var modCheckboxes = document.querySelectorAll('#modDropdown input[type="checkbox"]');
+    for (var i = 0; i < modCheckboxes.length; i++) {
+        modCheckboxes[i].checked = false;
     }
     selectedMods = [];
-    var textSpan = document.getElementById('modSelectedText');
-    if (textSpan) textSpan.textContent = 'All';
+    var modText = document.getElementById('modSelectedText');
+    if (modText) modText.textContent = 'All';
     
     filteredPeptides = [...peptidesData];
     updateBrowseStats();
@@ -1803,6 +1868,8 @@ window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 window.toggleModDropdown = toggleModDropdown;
 window.updateModSelectionAndFilter = updateModSelectionAndFilter;
+window.toggleSourceDropdown = toggleSourceDropdown;
+window.updateSourceSelectionAndFilter = updateSourceSelectionAndFilter;
 window.formatModification = formatModification;
 
 // Initialize
