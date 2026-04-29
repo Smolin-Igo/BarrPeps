@@ -60,12 +60,7 @@ function loadExcelFile() {
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
                 var worksheet = workbook.Sheets[sheetName];
-                
-                // Используем raw: false и defval: '' для корректной загрузки всех данных
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, {
-                    raw: false,
-                    defval: ''
-                });
+                var jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
                 var lowerName = sheetName.toLowerCase();
                 if (lowerName === 'peptides') {
@@ -1403,16 +1398,16 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
             '<div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
-    // ССЫЛКИ - ТОЛЬКО из literature (peptide.notes)
-    var referencesHtml = '';
-    var literatureHtml = formatLiteratureLinks(peptide.notes || '');
-    
-    if (literatureHtml) {
-        referencesHtml = '<div class="detail-section"><h3>References</h3>' + literatureHtml + '</div>';
-    } else {
-        referencesHtml = '<div class="detail-section"><h3>References</h3>' +
-            '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
-    }
+    // References section - ТОЛЬКО из literature (peptide.notes)
+var referencesHtml = '';
+var literatureHtml = formatLiteratureLinks(peptide.notes || '');
+
+if (literatureHtml) {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' + literatureHtml + '</div>';
+} else {
+    referencesHtml = '<div class="detail-section"><h3>References</h3>' +
+        '<div class="detail-row"><span class="detail-value">No references available</span></div></div>';
+}
     
     // Собираем всю страницу
     var html = '<div class="peptide-detail-container">' +
