@@ -57,16 +57,37 @@ function loadExcelFile() {
             var sheetNames = workbook.SheetNames;
             console.log('Sheets found:', sheetNames);
             
+            // Сначала загружаем peptides с литературой напрямую
+            var peptidesSheet = workbook.Sheets['peptides'];
+            if (peptidesSheet) {
+                // Получаем диапазон ячеек
+                var range = XLSX.utils.decode_range(peptidesSheet['!ref']);
+                console.log('Peptides sheet range:', range);
+                
+                // Конвертируем в JSON с сохранением всех данных
+                peptidesData = XLSX.utils.sheet_to_json(peptidesSheet, {
+                    raw: true,
+                    defval: null
+                });
+                console.log('Peptides loaded:', peptidesData.length);
+                
+                // Проверяем первую запись
+                if (peptidesData.length > 0) {
+                    console.log('First peptide keys:', Object.keys(peptidesData[0]));
+                    console.log('First peptide literature:', peptidesData[0]['literature']);
+                }
+            }
+            
+            // Загружаем остальные листы
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
+                if (sheetName.toLowerCase() === 'peptides') continue; // Уже загрузили
+                
                 var worksheet = workbook.Sheets[sheetName];
                 var jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
                 var lowerName = sheetName.toLowerCase();
-                if (lowerName === 'peptides') {
-                    peptidesData = jsonData;
-                    console.log('Peptides:', peptidesData.length);
-                } else if (lowerName === 'experiments') {
+                if (lowerName === 'experiments') {
                     experimentsData = jsonData;
                     console.log('Experiments:', experimentsData.length);
                 } else if (lowerName === 'references') {
@@ -1191,7 +1212,12 @@ function sortBy(column) {
 // ========== REFERENCE FORMATTING FUNCTIONS ==========
 
 function formatLiteratureLinks(literatureStr) {
-    if (!literatureStr || literatureStr.trim() === '' || literatureStr === '{}' || literatureStr === '[]') {
+    // Проверяем на пустоту
+    if (!literatureStr) return '';
+    if (typeof literatureStr !== 'string') {
+        literatureStr = String(literatureStr);
+    }
+    if (literatureStr.trim() === '' || literatureStr === '{}' || literatureStr === '[]') {
         return '';
     }
     
@@ -1199,14 +1225,10 @@ function formatLiteratureLinks(literatureStr) {
     var references = [];
     var text = literatureStr.trim();
     
-    // Проверяем, старый ли это формат (JSON-подобный словарь)
+    // Пробуем распарсить как JSON-словарь (старый формат)
     if (text.startsWith('{') && text.endsWith('}')) {
         try {
-            // Заменяем одинарные кавычки на двойные
             var jsonStr = text.replace(/'/g, '"');
-            // Экранируем специальные символы
-            jsonStr = jsonStr.replace(/“/g, '\\"').replace(/”/g, '\\"');
-            
             var parsed = JSON.parse(jsonStr);
             
             for (var key in parsed) {
@@ -1223,21 +1245,18 @@ function formatLiteratureLinks(literatureStr) {
                 }
             }
         } catch(e) {
-            // Если не удалось распарсить JSON, показываем как есть
-            console.log('Could not parse literature JSON, showing as plain text');
+            // Если не парсится — показываем как обычный текст
             references.push(text);
         }
     } else {
-        // Новый формат - обычный текст
+        // Обычный текст (новый формат)
         references.push(text);
     }
     
+    // Форматируем
     for (var i = 0; i < references.length; i++) {
         var refText = references[i];
-        
-        // Делаем DOI кликабельным
         refText = makeDoiClickable(refText);
-        // Делаем PMID кликабельным
         refText = makePmidClickable(refText);
         
         html += '<div class="detail-row" style="margin-bottom: 0.5rem;">' +
@@ -1503,8 +1522,7 @@ window.updateSourceSelectionAndFilter = updateSourceSelectionAndFilter;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
+Initializedocument.addEventListener('DOMContentLoaded', function() {
     console.log('DOM ready');
     if (typeof XLSX !== 'undefined') {
         loadExcelFile();
