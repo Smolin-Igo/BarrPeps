@@ -1508,7 +1508,7 @@ window.updateSourceSelectionAndFilter = updateSourceSelectionAndFilter;
 window.showUnderConstruction = showUnderConstruction;
 window.closeModal = closeModal;
 
-// Initializedocument.addEventListener('DOMContentLoaded', function() {
+Initializedocument.addEventListener('DOMContentLoaded', function() {
     console.log('DOM ready');
     if (typeof XLSX !== 'undefined') {
         loadExcelFile();
