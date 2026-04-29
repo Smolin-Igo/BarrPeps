@@ -57,31 +57,45 @@ function loadExcelFile() {
             var sheetNames = workbook.SheetNames;
             console.log('Sheets found:', sheetNames);
             
-            // Сначала загружаем peptides с литературой напрямую
+            // Загружаем peptides с прямым доступом к ячейкам
             var peptidesSheet = workbook.Sheets['peptides'];
             if (peptidesSheet) {
-                // Получаем диапазон ячеек
-                var range = XLSX.utils.decode_range(peptidesSheet['!ref']);
-                console.log('Peptides sheet range:', range);
-                
-                // Конвертируем в JSON с сохранением всех данных
-                peptidesData = XLSX.utils.sheet_to_json(peptidesSheet, {
-                    raw: true,
-                    defval: null
-                });
+                // Стандартная загрузка
+                peptidesData = XLSX.utils.sheet_to_json(peptidesSheet);
                 console.log('Peptides loaded:', peptidesData.length);
                 
-                // Проверяем первую запись
-                if (peptidesData.length > 0) {
-                    console.log('First peptide keys:', Object.keys(peptidesData[0]));
-                    console.log('First peptide literature:', peptidesData[0]['literature']);
+                // Находим колонку с литературой по заголовку
+                var range = XLSX.utils.decode_range(peptidesSheet['!ref']);
+                var literatureCol = -1;
+                
+                // Ищем колонку "literature" в первой строке
+                for (var col = range.s.c; col <= range.e.c; col++) {
+                    var cellAddress = XLSX.utils.encode_cell({r: 0, c: col});
+                    var cell = peptidesSheet[cellAddress];
+                    if (cell && cell.v && String(cell.v).toLowerCase() === 'literature') {
+                        literatureCol = col;
+                        console.log('Found literature column at index:', col, 'letter:', XLSX.utils.encode_col(col));
+                        break;
+                    }
+                }
+                
+                // Если нашли колонку, читаем её напрямую
+                if (literatureCol >= 0) {
+                    for (var row = 1; row <= range.e.r; row++) {
+                        var cellAddress = XLSX.utils.encode_cell({r: row, c: literatureCol});
+                        var cell = peptidesSheet[cellAddress];
+                        if (cell && peptidesData[row - 1]) {
+                            peptidesData[row - 1].literature = cell.w || cell.v || '';
+                        }
+                    }
+                    console.log('Literature column read directly');
                 }
             }
             
             // Загружаем остальные листы
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
-                if (sheetName.toLowerCase() === 'peptides') continue; // Уже загрузили
+                if (sheetName.toLowerCase() === 'peptides') continue;
                 
                 var worksheet = workbook.Sheets[sheetName];
                 var jsonData = XLSX.utils.sheet_to_json(worksheet);
