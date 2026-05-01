@@ -634,19 +634,22 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     if (!container || !pdbContent) return;
     
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
-    // Проверяем, что нашли именно пептид, а не всю цепь
-if (peptideInfo && peptideSequence) {
-    var targetLen = peptideSequence.length;
-    if (peptideInfo.residues.length > targetLen * 1.5) {
-        console.log('WARNING: Found chain is much larger than peptide (' + peptideInfo.residues.length + ' vs ' + targetLen + '). Not highlighting.');
-        peptideInfo = null;
+    
+    // Проверяем размер пептида
+    if (peptideInfo && peptideSequence) {
+        if (peptideInfo.residues.length > peptideSequence.length * 1.5) {
+            console.log('WARNING: Chain too large, not highlighting');
+            peptideInfo = null;
+        }
     }
-}
+    
     var ssbonds = parseSSBOND(pdbContent);
     
-    // Собираем SG атомы
-    var allSGAtoms = {};
+    // Собираем все атомы (не только серу) для подсказок
+    var allAtoms = {};
+    var residueInfo = {}; // Для подсказок: chain_resSeq -> {resName, resSeq, chain}
     var lines = pdbContent.split('\n');
+    
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
@@ -654,133 +657,138 @@ if (peptideInfo && peptideSequence) {
             var resName = line.substring(17, 20).trim();
             var chainId = line.substring(21, 22).trim();
             var resSeq = parseInt(line.substring(22, 26).trim());
+            var x = parseFloat(line.substring(30, 38));
+            var y = parseFloat(line.substring(38, 46));
+            var z = parseFloat(line.substring(46, 54));
+            
+            var key = chainId + '_' + resSeq;
             
             if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
-                var x = parseFloat(line.substring(30, 38));
-                var y = parseFloat(line.substring(38, 46));
-                var z = parseFloat(line.substring(46, 54));
-                var key = chainId + '_' + resSeq;
                 allSGAtoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
+            }
+            
+            // Сохраняем информацию об остатке
+            if (!residueInfo[key]) {
+                residueInfo[key] = { 
+                    resName: resName, 
+                    resSeq: resSeq, 
+                    chain: chainId,
+                    fullName: getFullResidueName(resName)
+                };
             }
         }
     }
     
-// Фильтруем связи с учетом смещения нумерации
-var peptideBonds = [];
-var usedPairs = {};
-
-if (peptideInfo && ssbonds.length > 0) {
-    var offset = peptideInfo.startRes - 1; // Смещение: номер в PDB минус номер в БД
-    console.log('Peptide chain:', peptideInfo.chain, 'range:', peptideInfo.startRes, '-', peptideInfo.endRes, 'offset:', offset);
+    // Фильтруем связи
+    var peptideBonds = [];
+    var usedPairs = {};
     
-    for (var i = 0; i < ssbonds.length; i++) {
-        var bond = ssbonds[i];
+    if (peptideInfo && ssbonds.length > 0) {
+        var offset = peptideInfo.startRes - 1;
         
-        var chain1Match = (bond.chain1 === peptideInfo.chain);
-        var chain2Match = (bond.chain2 === peptideInfo.chain);
-        var res1InRange = (bond.res1 >= peptideInfo.startRes && bond.res1 <= peptideInfo.endRes);
-        var res2InRange = (bond.res2 >= peptideInfo.startRes && bond.res2 <= peptideInfo.endRes);
-        
-        if (chain1Match && chain2Match && res1InRange && res2InRange) {
-            var pairKey = Math.min(bond.res1, bond.res2) + '_' + Math.max(bond.res1, bond.res2);
+        for (var i = 0; i < ssbonds.length; i++) {
+            var bond = ssbonds[i];
             
-            // Пересчитываем абсолютные номера PDB в относительные (как в БД)
-            var relRes1 = bond.res1 - offset;
-            var relRes2 = bond.res2 - offset;
+            var chain1Match = (bond.chain1 === peptideInfo.chain);
+            var chain2Match = (bond.chain2 === peptideInfo.chain);
+            var res1InRange = (bond.res1 >= peptideInfo.startRes && bond.res1 <= peptideInfo.endRes);
+            var res2InRange = (bond.res2 >= peptideInfo.startRes && bond.res2 <= peptideInfo.endRes);
             
-            console.log('Bond: Cys' + bond.res1 + '-Cys' + bond.res2 + ' (relative: Cys' + relRes1 + '-Cys' + relRes2 + ')');
-            
-            // Проверяем, есть ли эта связь в БД (сравниваем относительные номера)
-            var inDB = false;
-            if (disulfideBondsFromDB && disulfideBondsFromDB.length > 0) {
-                for (var d = 0; d < disulfideBondsFromDB.length; d++) {
-                    var dbBond = disulfideBondsFromDB[d];
-                    var dbRes1 = parseInt(dbBond.cys1) || 0;
-                    var dbRes2 = parseInt(dbBond.cys2) || 0;
-                    
-                    // Сравниваем относительные номера с БД
-                    if ((relRes1 === dbRes1 && relRes2 === dbRes2) || 
-                        (relRes1 === dbRes2 && relRes2 === dbRes1)) {
-                        inDB = true;
-                        console.log('  -> Matched DB bond: Cys' + dbRes1 + '-Cys' + dbRes2);
-                        break;
+            if (chain1Match && chain2Match && res1InRange && res2InRange) {
+                var pairKey = Math.min(bond.res1, bond.res2) + '_' + Math.max(bond.res1, bond.res2);
+                var relRes1 = bond.res1 - offset;
+                var relRes2 = bond.res2 - offset;
+                
+                var inDB = false;
+                if (disulfideBondsFromDB && disulfideBondsFromDB.length > 0) {
+                    for (var d = 0; d < disulfideBondsFromDB.length; d++) {
+                        var dbBond = disulfideBondsFromDB[d];
+                        var dbRes1 = parseInt(dbBond.cys1) || 0;
+                        var dbRes2 = parseInt(dbBond.cys2) || 0;
+                        if ((relRes1 === dbRes1 && relRes2 === dbRes2) || (relRes1 === dbRes2 && relRes2 === dbRes1)) {
+                            inDB = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!inDB) continue;
+                
+                if (!usedPairs[pairKey]) {
+                    usedPairs[pairKey] = true;
+                    var key1 = bond.chain1 + '_' + bond.res1;
+                    var key2 = bond.chain2 + '_' + bond.res2;
+                    if (allSGAtoms[key1] && allSGAtoms[key2]) {
+                        peptideBonds.push({
+                            atom1: allSGAtoms[key1], atom2: allSGAtoms[key2],
+                            chain1: bond.chain1, res1: bond.res1,
+                            chain2: bond.chain2, res2: bond.res2
+                        });
                     }
                 }
             }
-            
-            if (!inDB) {
-                console.log('  -> Skipped: not in DB');
-                continue;
-            }
-            
-            if (!usedPairs[pairKey]) {
-                usedPairs[pairKey] = true;
-                
-                var key1 = bond.chain1 + '_' + bond.res1;
-                var key2 = bond.chain2 + '_' + bond.res2;
-                
-                var atom1 = allSGAtoms[key1];
-                var atom2 = allSGAtoms[key2];
-                
-                if (atom1 && atom2) {
-                    peptideBonds.push({
-                        atom1: atom1, atom2: atom2,
-                        chain1: bond.chain1, res1: bond.res1,
-                        chain2: bond.chain2, res2: bond.res2
-                    });
-                    console.log('  -> ADDED');
-                }
-            }
         }
     }
-}
-    
-    console.log('Total unique bonds for peptide:', peptideBonds.length);
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
     pdbViewer.addModel(pdbContent, 'pdb');
     
-    // Rainbow раскраска ТОЛЬКО для остатков пептида
-if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
-    pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.3 } });
-    
-    console.log('Coloring', peptideInfo.residues.length, 'residues from', peptideInfo.residues[0].resSeq, 'to', peptideInfo.residues[peptideInfo.residues.length-1].resSeq);
-    
-    for (var i = 0; i < peptideInfo.residues.length; i++) {
-        var color = getRainbowColor(i, peptideInfo.residues.length);
-        // Применяем стиль ТОЛЬКО к конкретному остатку в конкретной цепи
-        pdbViewer.addStyle(
-            { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
-            { cartoon: { color: color, opacity: 0.95 } }
-        );
+    // Раскраска
+    if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
+        pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
+        for (var i = 0; i < peptideInfo.residues.length; i++) {
+            var color = getRainbowColor(i, peptideInfo.residues.length);
+            pdbViewer.addStyle(
+                { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
+                { cartoon: { color: color, opacity: 0.95 } }
+            );
+        }
+    } else {
+        pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
     }
-} else {
-    pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
-}
+    
+    // Добавляем подсказки при наведении
+    pdbViewer.addSurface($3Dmol.SurfaceType.VDW, { opacity: 0.0, colorscheme: 'white' }, {}, {}); // Прозрачная поверхность для hover
+    
+    // Настраиваем отображение при наведении через label
+    for (var key in residueInfo) {
+        var ri = residueInfo[key];
+        // Отображаем только для пептида (если он найден), иначе для всех
+        var showLabel = !peptideInfo || (peptideInfo.chain === ri.chain && 
+                                          ri.resSeq >= peptideInfo.startRes && 
+                                          ri.resSeq <= peptideInfo.endRes);
+        
+        if (showLabel) {
+            pdbViewer.addLabel(ri.resName + ' ' + ri.resSeq, {
+                position: { chain: ri.chain, resi: ri.resSeq },
+                backgroundColor: 0x2c5282,
+                fontColor: 'white',
+                fontSize: 10,
+                showBackground: true,
+                backgroundOpacity: 0.8,
+                inFront: true,
+                fixedHeight: false
+            });
+        }
+    }
     
     // Сферы на атомах серы
     for (var i = 0; i < peptideBonds.length; i++) {
         var bond = peptideBonds[i];
-        pdbViewer.addSphere({
-            center: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-            radius: 0.4, color: 0xffcc00, opacity: 1.0
-        });
-        pdbViewer.addSphere({
-            center: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-            radius: 0.4, color: 0xffcc00, opacity: 1.0
-        });
+        pdbViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.4, color: 0xffcc00 });
+        pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.4, color: 0xffcc00 });
     }
     
     pdbViewer.zoomTo();
     
-    // Стрелки-цилиндры между атомами серы
+    // Стрелки между атомами серы
     setTimeout(function() {
         for (var i = 0; i < peptideBonds.length; i++) {
-            var bond = peptideBonds[i];
+            var b = peptideBonds[i];
             pdbViewer.addArrow({
-                start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-                end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+                start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
                 radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
             });
         }
@@ -800,6 +808,18 @@ if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
             container.parentNode.appendChild(cc);
         }
     }, 50);
+}
+
+// Полное имя остатка
+function getFullResidueName(threeLetter) {
+    var names = {
+        'ALA':'Alanine','ARG':'Arginine','ASN':'Asparagine','ASP':'Aspartic acid',
+        'CYS':'Cysteine','GLN':'Glutamine','GLU':'Glutamic acid','GLY':'Glycine',
+        'HIS':'Histidine','ILE':'Isoleucine','LEU':'Leucine','LYS':'Lysine',
+        'MET':'Methionine','PHE':'Phenylalanine','PRO':'Proline','SER':'Serine',
+        'THR':'Threonine','TRP':'Tryptophan','TYR':'Tyrosine','VAL':'Valine'
+    };
+    return names[threeLetter.toUpperCase()] || threeLetter;
 }
 
 function setRepresentation(type) {
