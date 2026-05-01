@@ -445,7 +445,7 @@ function findPeptideChain(pdbContent, peptideSequence) {
     return null;
 }
 
-// Сохраняем последние координаты мыши
+// Сохраняем координаты мыши с учетом скролла
 var lastMouseX = 0;
 var lastMouseY = 0;
 document.addEventListener('mousemove', function(e) {
@@ -456,6 +456,9 @@ document.addEventListener('mousemove', function(e) {
 function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFromDB) {
     var container = document.getElementById('structure-viewer-pdb');
     if (!container || !pdbContent) return;
+    
+    // Сохраняем контейнер для полноэкранного режима
+    window.pdbContainer = container;
     
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
     
@@ -539,10 +542,19 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     }
     
     container.innerHTML = '';
-    pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
+    
+    // Полноэкранный режим
+    var isFullscreen = container.classList.contains('fullscreen-pdb');
+    var viewerWidth = isFullscreen ? window.innerWidth : container.clientWidth;
+    var viewerHeight = isFullscreen ? window.innerHeight - 60 : container.clientHeight;
+    
+    pdbViewer = $3Dmol.createViewer(container, { 
+        backgroundColor: 'white',
+        width: viewerWidth,
+        height: viewerHeight
+    });
     pdbViewer.addModel(pdbContent, 'pdb');
     
-    // Сохраняем оригинальные цвета пептида для восстановления
     var peptideColors = [];
     
     if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
@@ -590,14 +602,12 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     var lastHoveredKey = null;
     
-    // Функция восстановления цвета
     function restoreResidueColor(key) {
         if (!key) return;
         var parts = key.split('_');
         var chain = parts[0];
         var resi = parseInt(parts[1]);
         
-        // Ищем оригинальный цвет пептида
         for (var i = 0; i < peptideColors.length; i++) {
             if (peptideColors[i].chain === chain && peptideColors[i].resi === resi) {
                 pdbViewer.addStyle(
@@ -607,7 +617,6 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
                 return;
             }
         }
-        // Если не нашли — возвращаем серый
         pdbViewer.addStyle(
             { chain: chain, resi: resi },
             { cartoon: { color: 0x445566, opacity: 0.45 } }
@@ -620,14 +629,12 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
                 hoverPopup.textContent = getFullResidueName(atom.resn) + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
                 hoverPopup.style.display = 'block';
                 hoverPopup.style.left = (lastMouseX + 18) + 'px';
-                hoverPopup.style.top = (lastMouseY - 15) + 'px';
+                hoverPopup.style.top = (lastMouseY + 18) + 'px';
                 
                 var currentKey = atom.chain + '_' + atom.resi;
                 if (lastHoveredKey !== currentKey) {
-                    // Восстанавливаем предыдущий
                     if (lastHoveredKey) restoreResidueColor(lastHoveredKey);
                     
-                    // Подсвечиваем новый — ТОЛЬКО cartoon, не меняя форму
                     pdbViewer.addStyle(
                         { chain: atom.chain, resi: atom.resi },
                         { cartoon: { color: 0xff4488, opacity: 1.0 } }
@@ -658,15 +665,89 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
+    // Кнопки управления
     setTimeout(function() {
-        if (!document.getElementById('btn-cartoon')) {
-            var cc = document.createElement('div');
-            cc.className = 'structure-controls';
-            cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
-                           '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
-            container.parentNode.appendChild(cc);
-        }
+        var existingControls = container.parentNode.querySelector('.structure-controls');
+        if (existingControls) existingControls.remove();
+        
+        var cc = document.createElement('div');
+        cc.className = 'structure-controls';
+        cc.innerHTML = 
+            '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
+            '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>' +
+            '<button id="btn-fullscreen" onclick="toggleFullscreenPDB()" style="background:#48bb78;">⛶ Fullscreen</button>';
+        container.parentNode.appendChild(cc);
     }, 50);
+}
+
+// Функция для полноэкранного режима
+function toggleFullscreenPDB() {
+    var container = window.pdbContainer || document.getElementById('structure-viewer-pdb');
+    if (!container) return;
+    
+    var isFullscreen = container.classList.contains('fullscreen-pdb');
+    
+    if (!isFullscreen) {
+        // Сохраняем оригинальные стили
+        container.dataset.originalPosition = container.style.position;
+        container.dataset.originalWidth = container.style.width;
+        container.dataset.originalHeight = container.style.height;
+        container.dataset.originalZIndex = container.style.zIndex;
+        container.dataset.originalTop = container.style.top;
+        container.dataset.originalLeft = container.style.left;
+        container.dataset.originalBackground = container.style.background;
+        
+        // Применяем полноэкранные стили
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100vw';
+        container.style.height = '100vh';
+        container.style.zIndex = '9999';
+        container.style.background = '#000';
+        container.classList.add('fullscreen-pdb');
+        
+        // Меняем текст кнопки
+        var btn = document.getElementById('btn-fullscreen');
+        if (btn) btn.textContent = '✕ Exit Fullscreen';
+        
+        // Добавляем кнопку закрытия
+        var closeBtn = document.createElement('button');
+        closeBtn.id = 'closeFullscreenBtn';
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = 'position:fixed; top:10px; right:10px; z-index:10000; background:#e53e3e; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:20px; cursor:pointer;';
+        closeBtn.onclick = toggleFullscreenPDB;
+        document.body.appendChild(closeBtn);
+        
+    } else {
+        // Восстанавливаем оригинальные стили
+        container.style.position = container.dataset.originalPosition || '';
+        container.style.width = container.dataset.originalWidth || '';
+        container.style.height = container.dataset.originalHeight || '';
+        container.style.zIndex = container.dataset.originalZIndex || '';
+        container.style.top = container.dataset.originalTop || '';
+        container.style.left = container.dataset.originalLeft || '';
+        container.style.background = container.dataset.originalBackground || '';
+        container.classList.remove('fullscreen-pdb');
+        
+        // Меняем текст кнопки
+        var btn = document.getElementById('btn-fullscreen');
+        if (btn) btn.textContent = '⛶ Fullscreen';
+        
+        // Удаляем кнопку закрытия
+        var closeBtn = document.getElementById('closeFullscreenBtn');
+        if (closeBtn) closeBtn.remove();
+    }
+    
+    // Пересоздаем viewer с новыми размерами
+    if (window.pdbContentCache && window.currentPdbInfo && window.currentPeptideSequence) {
+        renderPDBStructure(
+            window.pdbContentCache, 
+            document.getElementById('currentPdbId')?.textContent || '', 
+            window.currentPeptideSequence, 
+            window.currentDisulfideBonds || []
+        );
+    }
 }
 
 function setRepresentation(type) {
