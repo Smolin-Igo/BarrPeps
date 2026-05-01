@@ -327,21 +327,6 @@ async function fetchPDBStructure(pdbId) {
 }
 
 function parsePDBHeader(pdbContent) {
-var pdbHeader = parsePDBHeader(content);
-console.log('=== PDB Header for 1IVO ===');
-console.log('Title:', pdbHeader.title);
-console.log('Molecule:', pdbHeader.molecule);
-console.log('Organism:', pdbHeader.organism);
-console.log('Chain descriptions:', JSON.stringify(pdbHeader.chainDescriptions));
-
-// Выведем первые 200 строк PDB для анализа
-var lines = content.split('\n');
-console.log('=== First lines of PDB ===');
-for (var i = 0; i < 100; i++) {
-    if (lines[i].startsWith('COMPND') || lines[i].startsWith('TITLE') || lines[i].startsWith('SOURCE') || lines[i].startsWith('KEYWDS')) {
-        console.log(lines[i]);
-    }
-}
     var lines = pdbContent.split('\n');
     var header = {
         title: '',
@@ -514,6 +499,20 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     
     // Парсим заголовок PDB
     var pdbHeader = parsePDBHeader(content);
+console.log('=== PDB Header for 1IVO ===');
+console.log('Title:', pdbHeader.title);
+console.log('Molecule:', pdbHeader.molecule);
+console.log('Organism:', pdbHeader.organism);
+console.log('Chain descriptions:', JSON.stringify(pdbHeader.chainDescriptions));
+
+// Выведем первые 200 строк PDB для анализа
+var lines = content.split('\n');
+console.log('=== First lines of PDB ===');
+for (var i = 0; i < 100; i++) {
+    if (lines[i].startsWith('COMPND') || lines[i].startsWith('TITLE') || lines[i].startsWith('SOURCE') || lines[i].startsWith('KEYWDS')) {
+        console.log(lines[i]);
+    }
+}
     
     var peptideInfo = findPeptideChain(content, peptideSeq);
     if (peptideInfo && peptideSeq && peptideInfo.residues.length > peptideSeq.length * 1.5) {
