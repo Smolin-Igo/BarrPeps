@@ -829,7 +829,7 @@ function setRepresentation(type) {
     if (type === 'cartoon') {
         if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
             // Фон - приглушенный сине-серый
-            pdbViewer.setStyle({}, { cartoon: { color: 0x7a8b9e, opacity: 0.5 } });
+            pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.5 } });
             
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
@@ -867,8 +867,8 @@ function setRepresentation(type) {
         if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
             // Фон - приглушенный сине-серый (контрастнее)
             pdbViewer.setStyle({}, { 
-                stick: { color: 0x7a8b9e, radius: 0.06 },
-                sphere: { color: 0x7a8b9e, scale: 0.12 }
+                stick: { color: 0x445566, radius: 0.06 },
+                sphere: { color: 0x445566, scale: 0.12 }
             });
             
             for (var i = 0; i < peptideInfo.residues.length; i++) {
@@ -1339,7 +1339,7 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
         html+='<div class="structure-viewer"><h3>3D Structure</h3><div class="no-structure"><p>No PDB structure available.</p></div></div>';
     }
     
-    html+='<div class="detail-section"><h3>Basic Information</h3><div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">'+(peptide.sequence_one_letter||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Clean:</span><span class="detail-value" style="font-family:monospace;">'+(peptide.sequence_clean||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">'+(peptide.length||'N/A')+' aa</span></div><div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">'+(peptide.molecular_weight?peptide.molecular_weight.toFixed(2):'N/A')+' Da</span></div>'+(peptide.molecular_formula?'<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">'+peptide.molecular_formula+'</span></div>':'')+'</div>'+(peptide.structure_type&&peptide.structure_type!=='N/A'?'<div class="detail-section"><h3>Structure</h3><div class="detail-row"><span class="detail-label">Type:</span><span class="detail-value">'+peptide.structure_type+'</span></div>'+(peptide.disulfide_bridge?'<div class="detail-row"><span class="detail-label">Disulfide:</span><span class="detail-value">'+peptide.disulfide_bridge+'</span></div>':'')+'</div>':'')+(peptide.source_organism&&peptide.source_organism!=='N/A'?'<div class="detail-section"><h3>Source</h3><div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">'+peptide.source_organism+'</span></div></div>':'')+pdbH+modsH+expH+refH+'</div>';
+    html+='<div class="detail-section"><h3>Basic Information</h3><div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">'+(peptide.sequence_one_letter||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Clean:</span><span class="detail-value" style="font-family:monospace;">'+(peptide.sequence_clean||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">'+(peptide.length||'N/A')+' aa</span></div><div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">'+(peptide.molecular_weight?peptide.molecular_weight.toFixed(2):'N/A')+' Da</span></div>'+(peptide.molecular_formula?'<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">'+peptide.molecular_formula+'</span></div>':'')+'</div>'+(peptide.structure_type&&peptide.structure_type!=='N/A'?'<div class="detail-section"><h3>Structure</h3><div class="detail-row"><span class="detail-label">Type:</span><span class="detail-value">'+peptide.structure_type+'</span></div>'+(peptide.disulfide_bridge ? '<div class="detail-row"><span class="detail-label">Disulfide bonds:</span><span class="detail-value" style="color: #d69e2e; font-weight: 600;">' + peptide.disulfide_bridge + '</span></div>' : '')+'</div>':'')+(peptide.source_organism&&peptide.source_organism!=='N/A'?'<div class="detail-section"><h3>Source</h3><div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">'+peptide.source_organism+'</span></div></div>':'')+pdbH+modsH+expH+refH+'</div>';
     
     var dc=document.getElementById('peptideDetail');
     if(dc) dc.innerHTML=html;
