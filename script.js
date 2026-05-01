@@ -507,12 +507,197 @@ async function fetchPDBStructure(pdbId) {
     } catch(e) { return null; }
 }
 
+// Извлечение дисульфидных связей из SSBOND записей PDB
+function parseSSBOND(pdbContent) {
+    var bonds = [];
+    var lines = pdbContent.split('\n');
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('SSBOND')) {
+            // SSBOND   1 CYS A    6    CYS A   11
+            var chain1 = line.substring(15, 16).trim();
+            var res1 = parseInt(line.substring(17, 21).trim());
+            var chain2 = line.substring(29, 30).trim();
+            var res2 = parseInt(line.substring(31, 35).trim());
+            
+            bonds.push({
+                chain1: chain1,
+                res1: res1,
+                chain2: chain2,
+                res2: res2
+            });
+        }
+    }
+    
+    console.log('SSBOND records found:', bonds.length);
+    return bonds;
+}
+
+// Поиск атомов серы для конкретных остатков цистеина
+function findSGAtoms(pdbContent, cysteinePositions) {
+    var lines = pdbContent.split('\n');
+    var atoms = {};
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
+            var atomName = line.substring(12, 16).trim();
+            var resName = line.substring(17, 20).trim();
+            var chainId = line.substring(21, 22).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
+                var x = parseFloat(line.substring(30, 38));
+                var y = parseFloat(line.substring(38, 46));
+                var z = parseFloat(line.substring(46, 54));
+                
+                var key = chainId + '_' + resSeq;
+                atoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
+            }
+        }
+    }
+    
+    return atoms;
+}
+
+// Найти пептид в PDB по последовательности
+function findPeptideChain(pdbContent, peptideSequence) {
+    if (!peptideSequence) return null;
+    
+    var lines = pdbContent.split('\n');
+    var chains = {};
+    var currentChain = null;
+    var chainSeq = '';
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('ATOM') && line.substring(13, 16).trim() === 'CA') {
+            var chainId = line.substring(21, 22).trim();
+            var resName = line.substring(17, 20).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if (currentChain !== chainId) {
+                if (currentChain && chainSeq) {
+                    if (!chains[currentChain]) chains[currentChain] = { seq: '', residues: [] };
+                    chains[currentChain].seq = chainSeq;
+                }
+                currentChain = chainId;
+                chainSeq = '';
+                if (!chains[chainId]) chains[chainId] = { seq: '', residues: [] };
+            }
+            
+            var aa = convertThreeToOne(resName);
+            if (aa) {
+                chainSeq += aa;
+                chains[chainId].residues.push({ resSeq: resSeq, aa: aa });
+            }
+        }
+    }
+    if (currentChain && chainSeq) {
+        if (!chains[currentChain]) chains[currentChain] = { seq: '', residues: [] };
+        chains[currentChain].seq = chainSeq;
+    }
+    
+    var target = peptideSequence.toUpperCase();
+    
+    // Ищем точное совпадение
+    for (var chain in chains) {
+        var idx = chains[chain].seq.indexOf(target);
+        if (idx !== -1) {
+            return {
+                chain: chain,
+                residues: chains[chain].residues.slice(idx, idx + target.length),
+                startRes: chains[chain].residues[idx].resSeq,
+                endRes: chains[chain].residues[idx + target.length - 1].resSeq
+            };
+        }
+    }
+    
+    // Если точного нет, ищем лучшую цепь по длине
+    var bestChain = null;
+    for (var chain in chains) {
+        if (!bestChain || chains[chain].seq.length > chains[bestChain].seq.length) {
+            bestChain = chain;
+        }
+    }
+    
+    if (bestChain) {
+        return {
+            chain: bestChain,
+            residues: chains[bestChain].residues,
+            startRes: chains[bestChain].residues[0].resSeq,
+            endRes: chains[bestChain].residues[chains[bestChain].residues.length - 1].resSeq
+        };
+    }
+    
+    return null;
+}
+
 function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFromDB) {
     var container = document.getElementById('structure-viewer-pdb');
     if (!container || !pdbContent) return;
     
-    // Анализируем PDB для этой конкретной структуры
-    var pdbInfo = findPeptideResiduesInPDB(pdbContent, peptideSequence, disulfideBondsFromDB);
+    // Находим пептид
+    var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
+    
+    // Получаем SSBOND записи из PDB
+    var ssbonds = parseSSBOND(pdbContent);
+    
+    // Находим все SG атомы
+    var allSGAtoms = {};
+    var lines = pdbContent.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
+            var atomName = line.substring(12, 16).trim();
+            var resName = line.substring(17, 20).trim();
+            var chainId = line.substring(21, 22).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
+                var x = parseFloat(line.substring(30, 38));
+                var y = parseFloat(line.substring(38, 46));
+                var z = parseFloat(line.substring(46, 54));
+                var key = chainId + '_' + resSeq;
+                allSGAtoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
+            }
+        }
+    }
+    
+    // Фильтруем дисульфидные связи - только те, где ОБА цистеина принадлежат пептиду
+    var peptideBonds = [];
+    
+    if (peptideInfo && ssbonds.length > 0) {
+        for (var i = 0; i < ssbonds.length; i++) {
+            var bond = ssbonds[i];
+            
+            // Проверяем, что оба цистеина в цепи пептида и в нужном диапазоне
+            var res1InPeptide = (bond.chain1 === peptideInfo.chain && 
+                                bond.res1 >= peptideInfo.startRes && 
+                                bond.res1 <= peptideInfo.endRes);
+            var res2InPeptide = (bond.chain2 === peptideInfo.chain && 
+                                bond.res2 >= peptideInfo.startRes && 
+                                bond.res2 <= peptideInfo.endRes);
+            
+            if (res1InPeptide && res2InPeptide) {
+                var key1 = bond.chain1 + '_' + bond.res1;
+                var key2 = bond.chain2 + '_' + bond.res2;
+                var atom1 = allSGAtoms[key1];
+                var atom2 = allSGAtoms[key2];
+                
+                if (atom1 && atom2) {
+                    peptideBonds.push({
+                        cys1: atom1,
+                        cys2: atom2,
+                        label: 'Cys' + bond.res1 + '-Cys' + bond.res2
+                    });
+                }
+            }
+        }
+    }
+    
+    console.log('Peptide disulfide bonds in this structure:', peptideBonds.length);
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
@@ -520,10 +705,14 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     pdbViewer.zoomTo();
     
     window.pdbContentCache = pdbContent;
-    window.currentPdbInfo = pdbInfo;
+    window.currentPdbInfo = {
+        peptideInfo: peptideInfo,
+        peptideBonds: peptideBonds,
+        allSGAtoms: allSGAtoms
+    };
     
     setRepresentation('cartoon');
-}
+}}
 
 function setRepresentation(type) {
     if (!pdbViewer || !window.pdbContentCache) return;
@@ -532,20 +721,19 @@ function setRepresentation(type) {
     pdbViewer.addModel(window.pdbContentCache, 'pdb');
     
     var info = window.currentPdbInfo || {};
-    var peptideResidues = info.peptideResidues || [];
-    var peptideChain = info.peptideChain;
-    var cysteineAtoms = info.cysteineAtoms || {};
-    var matchedBonds = info.matchedBonds || [];
+    var peptideInfo = info.peptideInfo;
+    var peptideBonds = info.peptideBonds || [];
     
     if (type === 'cartoon') {
-        if (peptideResidues.length > 0 && peptideChain) {
+        if (peptideInfo && peptideInfo.residues) {
             // Серый фон
             pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.4 } });
+            
             // Rainbow пептид
-            for (var i = 0; i < peptideResidues.length; i++) {
-                var color = getRainbowColor(i, peptideResidues.length);
+            for (var i = 0; i < peptideInfo.residues.length; i++) {
+                var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
-                    { chain: peptideChain, resi: peptideResidues[i].resSeq },
+                    { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
                     { cartoon: { color: color, opacity: 0.95 } }
                 );
             }
@@ -553,52 +741,42 @@ function setRepresentation(type) {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
         
-        // ТОЛЬКО цистеины из дисульфидных связей
-        for (var key in cysteineAtoms) {
-            var cys = cysteineAtoms[key];
+        // Подсвечиваем серу в цистеинах с дисульфидными связями
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
             pdbViewer.addStyle(
-                { chain: cys.chain, resi: cys.resSeq, atom: "SG" },
-                { sphere: { color: 0xffcc00, scale: 0.25, opacity: 0.9 } }
+                { chain: bond.cys1.chain, resi: bond.cys1.resSeq, atom: 'SG' },
+                { sphere: { color: 0xffcc00, scale: 0.3, opacity: 1.0 } }
+            );
+            pdbViewer.addStyle(
+                { chain: bond.cys2.chain, resi: bond.cys2.resSeq, atom: 'SG' },
+                { sphere: { color: 0xffcc00, scale: 0.3, opacity: 1.0 } }
             );
         }
         
         pdbViewer.removeAllShapes();
         
-        // Цилиндры между атомами серы
-        for (var i = 0; i < matchedBonds.length; i++) {
-            var bond = matchedBonds[i];
-            if (bond.cys1.x && bond.cys2.x) {
-                try {
-                    pdbViewer.addCylinder({
-                        start: {x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z},
-                        end: {x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z},
-                        radius: 0.12, color: 0xff8800, fromCap: 1, toCap: 1
-                    });
-                } catch(e) {}
-            }
-        }
-        
-        // Легенда
-        var lc = document.querySelector('.structure-legend');
-        if (lc) {
-            var old = document.getElementById('peptideLegendItem');
-            if (old) old.remove();
-            if (peptideResidues.length > 0) {
-                var ni = document.createElement('div');
-                ni.id = 'peptideLegendItem';
-                ni.className = 'legend-item';
-                ni.style.cssText = 'width:100%;margin-top:0.3rem;justify-content:center;';
-                ni.innerHTML = '<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-size:0.6rem;">N</span><div style="width:100px;height:12px;background:linear-gradient(to right,#0066ff,#00ff66,#ffff00,#ff6600,#ff0000);border-radius:6px;"></div><span style="font-size:0.6rem;">C</span></div><span style="margin-left:0.5rem;font-size:0.65rem;">Peptide</span>';
-                lc.appendChild(ni);
-            }
+        // Добавляем цилиндры ТОЧНО между атомами серы
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
+            try {
+                pdbViewer.addCylinder({
+                    start: { x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z },
+                    end: { x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z },
+                    radius: 0.12,
+                    color: 0xff8800,
+                    fromCap: 1,
+                    toCap: 1
+                });
+            } catch(e) {}
         }
     } else if (type === 'ballAndStick') {
-        if (peptideResidues.length > 0 && peptideChain) {
+        if (peptideInfo && peptideInfo.residues) {
             pdbViewer.setStyle({}, { stick: { color: 0xcccccc, radius: 0.08 }, sphere: { color: 0xcccccc, scale: 0.15 } });
-            for (var i = 0; i < peptideResidues.length; i++) {
-                var color = getRainbowColor(i, peptideResidues.length);
+            for (var i = 0; i < peptideInfo.residues.length; i++) {
+                var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
-                    { chain: peptideChain, resi: peptideResidues[i].resSeq },
+                    { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
                     { stick: { color: color, radius: 0.12 }, sphere: { color: color, scale: 0.25 } }
                 );
             }
@@ -606,27 +784,32 @@ function setRepresentation(type) {
             pdbViewer.setStyle({}, { stick: { colorscheme: 'elem', radius: 0.12 }, sphere: { colorscheme: 'elem', scale: 0.25 } });
         }
         
-        for (var key in cysteineAtoms) {
-            var cys = cysteineAtoms[key];
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
             pdbViewer.addStyle(
-                { chain: cys.chain, resi: cys.resSeq, atom: "SG" },
-                { sphere: { color: 0xffcc00, scale: 0.3, opacity: 0.9 } }
+                { chain: bond.cys1.chain, resi: bond.cys1.resSeq, atom: 'SG' },
+                { sphere: { color: 0xffcc00, scale: 0.35, opacity: 1.0 } }
+            );
+            pdbViewer.addStyle(
+                { chain: bond.cys2.chain, resi: bond.cys2.resSeq, atom: 'SG' },
+                { sphere: { color: 0xffcc00, scale: 0.35, opacity: 1.0 } }
             );
         }
         
         pdbViewer.removeAllShapes();
         
-        for (var i = 0; i < matchedBonds.length; i++) {
-            var bond = matchedBonds[i];
-            if (bond.cys1.x && bond.cys2.x) {
-                try {
-                    pdbViewer.addCylinder({
-                        start: {x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z},
-                        end: {x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z},
-                        radius: 0.15, color: 0xff8800, fromCap: 1, toCap: 1
-                    });
-                } catch(e) {}
-            }
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
+            try {
+                pdbViewer.addCylinder({
+                    start: { x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z },
+                    end: { x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z },
+                    radius: 0.15,
+                    color: 0xff8800,
+                    fromCap: 1,
+                    toCap: 1
+                });
+            } catch(e) {}
         }
     }
     
