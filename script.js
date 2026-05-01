@@ -175,6 +175,146 @@ function loadExcelFile() {
         });
 }
 
+function processAllData() {
+    var experimentsMap = {};
+    for (var i = 0; i < experimentsData.length; i++) {
+        var exp = experimentsData[i];
+        var pid = exp['peptide_id'];
+        if (pid) {
+            if (!experimentsMap[pid]) experimentsMap[pid] = [];
+            experimentsMap[pid].push(exp);
+        }
+    }
+    
+    var referencesMap = {};
+    for (var i = 0; i < referencesData.length; i++) {
+        var ref = referencesData[i];
+        var pid = ref['peptide_id'];
+        if (pid) {
+            if (!referencesMap[pid]) referencesMap[pid] = [];
+            referencesMap[pid].push(ref);
+        }
+    }
+    
+    var modificationsMap = {};
+    for (var i = 0; i < modificationsData.length; i++) {
+        var mod = modificationsData[i];
+        var pid = mod['peptide_id'];
+        if (pid) {
+            if (!modificationsMap[pid]) modificationsMap[pid] = [];
+            modificationsMap[pid].push(mod);
+        }
+    }
+    
+    var pdbMap = {};
+    for (var i = 0; i < pdbData.length; i++) {
+        var pdb = pdbData[i];
+        var pid = pdb['peptide_id'];
+        if (pid) {
+            if (!pdbMap[pid]) pdbMap[pid] = [];
+            pdbMap[pid].push(pdb);
+        }
+    }
+    
+    var enhanced = [];
+    for (var i = 0; i < peptidesData.length; i++) {
+        var p = peptidesData[i];
+        var pid = p['peptide_id'] || i + 1;
+        var rawSeq = p['sequence_1'] || '';
+        var threeSeq = p['sequence_3'] || '';
+        
+        var cleanSeq = '';
+        var modsForPeptide = modificationsMap[pid] || [];
+        if (modsForPeptide.length > 0) {
+            cleanSeq = modsForPeptide[0]['sequence_1_clean'] || '';
+        }
+        if (!cleanSeq && rawSeq) {
+            cleanSeq = rawSeq.replace(/\([^)]+\)/g, '').replace(/[^A-Za-z]/g, '');
+        }
+        
+        var allMods = [];
+        for (var m = 0; m < modsForPeptide.length; m++) {
+            var modVal = modsForPeptide[m]['modifications'];
+            if (modVal && modVal !== 'N/A' && modVal !== '') {
+                var parts = modVal.split(',').map(function(item) { return item.trim(); });
+                for (var k = 0; k < parts.length; k++) {
+                    if (parts[k] && allMods.indexOf(parts[k]) === -1) {
+                        allMods.push(parts[k]);
+                    }
+                }
+            }
+        }
+        
+        var pdbInfo = pdbMap[pid] || [];
+        var pdbIds = [];
+        var relatedPdbIds = [];
+        
+        for (var j = 0; j < pdbInfo.length; j++) {
+            var pdbId = pdbInfo[j]['PDB_ID'];
+            var relatedPdb = pdbInfo[j]['Related_PDB'];
+            
+            if (pdbId && pdbId !== 'Nah' && pdbId !== '' && pdbId !== 'N/A') {
+                var ids = pdbId.split(',').map(function(id) { return id.trim(); });
+                for (var k = 0; k < ids.length; k++) {
+                    if (ids[k] && ids[k] !== 'Nah' && ids[k] !== 'N/A') pdbIds.push(ids[k]);
+                }
+            }
+            
+            if (relatedPdb && relatedPdb !== 'Nah' && relatedPdb !== '') {
+                var relIds = relatedPdb.split(',').map(function(id) { return id.trim(); });
+                for (var k = 0; k < relIds.length; k++) {
+                    if (relIds[k] && relIds[k] !== 'Nah' && relIds[k] !== 'N/A') relatedPdbIds.push(relIds[k]);
+                }
+            }
+        }
+        
+        var uniquePdbIds = [];
+        for (var j = 0; j < pdbIds.length; j++) {
+            if (uniquePdbIds.indexOf(pdbIds[j]) === -1) uniquePdbIds.push(pdbIds[j]);
+        }
+        
+        var uniqueRelatedPdbIds = [];
+        for (var j = 0; j < relatedPdbIds.length; j++) {
+            if (uniqueRelatedPdbIds.indexOf(relatedPdbIds[j]) === -1) uniqueRelatedPdbIds.push(relatedPdbIds[j]);
+        }
+        
+        enhanced.push({
+            id: pid,
+            peptide_name: p['trivial_name'] || 'Peptide_' + pid,
+            sequence_one_letter: rawSeq,
+            sequence_clean: cleanSeq,
+            sequence_three_letter: threeSeq,
+            length: parseInt(p['length']) || cleanSeq.length,
+            molecular_weight: parseFloat(p['molecular_weight']) || 0,
+            molecular_formula: p['molecular_formula'] || '',
+            structure_type: p['conformation'] || 'N/A',
+            disulfide_bridge: p['disulfide_bridge'] || '',
+            disulfide_bonds: parseDisulfideBonds(p['disulfide_bridge'] || ''),
+            nature: p['nature'] || '',
+            source_organism: p['origin'] || 'N/A',
+            experiments: experimentsMap[pid] || [],
+            references: referencesMap[pid] || [],
+            modifications: allMods,
+            pdb_ids: uniquePdbIds,
+            related_pdb_ids: uniqueRelatedPdbIds,
+            has_pdb: uniquePdbIds.length > 0,
+            notes: p['literature'] || ''
+        });
+    }
+    
+    peptidesData = enhanced;
+    filteredPeptides = [...peptidesData];
+    
+    var currentPage = window.location.pathname.split('/').pop();
+    if (currentPage === 'index.html' || currentPage === '') {
+        initHomePage();
+    } else if (currentPage === 'browse.html') {
+        initBrowsePage();
+    } else if (currentPage === 'peptide.html') {
+        initPeptidePage();
+    }
+}
+
 function useFallbackData() {
     peptidesData = [];
     processAllData();
@@ -182,46 +322,27 @@ function useFallbackData() {
 
 // Парсинг дисульфидных связей
 function parseDisulfideBonds(disulfideStr) {
-    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') {
-        return [];
-    }
+    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') return [];
     
     var bonds = [];
-    
-    // Разделяем по ; или , или переносу строки
-    var parts = disulfideStr.split(/[;,\n]+/);
+    var parts = disulfideStr.split(/[;,]/);
     
     for (var i = 0; i < parts.length; i++) {
         var part = parts[i].trim();
         if (!part) continue;
         
-        console.log('Parsing disulfide part:', part);
-        
-        // Формат: Cys5-Cys34 (с пробелами или без)
-        var match = part.match(/Cys\s*(\d+[A-Za-z]?)\s*-\s*Cys\s*(\d+[A-Za-z]?)/i);
+        var match = part.match(/Cys[-\s]*(\d+[A-Za-z]?)\s*-\s*Cys[-\s]*(\d+[A-Za-z]?)/i);
         if (match) {
-            bonds.push({
-                cys1: match[1],
-                cys2: match[2],
-                raw: part
-            });
-            console.log('  Found bond:', match[1], '-', match[2]);
+            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
             continue;
         }
         
-        // Формат: Cys(5)-Cys(34)
-        match = part.match(/Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)\s*-\s*Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)/i);
+        match = part.match(/Cys\s*\((\d+[A-Za-z]?)\)\s*-\s*Cys\s*\((\d+[A-Za-z]?)\)/i);
         if (match) {
-            bonds.push({
-                cys1: match[1],
-                cys2: match[2],
-                raw: part
-            });
-            console.log('  Found bond (parens):', match[1], '-', match[2]);
+            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
         }
     }
     
-    console.log('Total bonds parsed:', bonds.length);
     return bonds;
 }
 
