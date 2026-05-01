@@ -321,19 +321,13 @@
             }, 100);
         };
     </script>
-    <!-- Модальное окно для увеличенной 3D структуры -->
-<div id="fullscreenModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999; background:rgba(0,0,0,0.8); justify-content:center; align-items:center;">
-    <div style="position:relative; width:85vw; height:80vh; background:white; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-        <!-- Заголовок -->
+    <div id="fullscreenModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999; background:rgba(0,0,0,0.85); justify-content:center; align-items:center;">
+    <div style="position:relative; width:90vw; height:85vh; max-width:1200px; max-height:900px; background:white; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
         <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#2c5282; color:white;">
             <h3 style="margin:0; font-size:16px;" id="fullscreenTitle">3D Structure Viewer</h3>
-            <div style="display:flex; gap:8px;">
-                <button onclick="window.fullscreenViewer && window.fullscreenViewer.setStyle({},{cartoon:{colorscheme:'ss',opacity:0.85}}); window.fullscreenViewer.render();" style="background:#4299e1; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">Reset</button>
-                <button onclick="closeFullscreenModal()" style="background:#e53e3e; color:white; border:none; border-radius:50%; width:32px; height:32px; font-size:18px; cursor:pointer;">✕</button>
-            </div>
+            <button onclick="closeFullscreenModal()" style="background:#e53e3e; color:white; border:none; border-radius:50%; width:32px; height:32px; font-size:18px; cursor:pointer;">✕</button>
         </div>
-        <!-- Viewer -->
-        <div id="fullscreenViewer" style="width:100%; height:calc(100% - 52px);"></div>
+        <div id="fullscreenViewer" style="width:100%; height:calc(100% - 52px); position:relative;"></div>
     </div>
 </div>
 </body>
