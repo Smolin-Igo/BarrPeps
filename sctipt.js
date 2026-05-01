@@ -182,27 +182,46 @@ function useFallbackData() {
 
 // Парсинг дисульфидных связей
 function parseDisulfideBonds(disulfideStr) {
-    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') return [];
+    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') {
+        return [];
+    }
     
     var bonds = [];
-    var parts = disulfideStr.split(/[;,]/);
+    
+    // Разделяем по ; или , или переносу строки
+    var parts = disulfideStr.split(/[;,\n]+/);
     
     for (var i = 0; i < parts.length; i++) {
         var part = parts[i].trim();
         if (!part) continue;
         
-        var match = part.match(/Cys[-\s]*(\d+[A-Za-z]?)\s*-\s*Cys[-\s]*(\d+[A-Za-z]?)/i);
+        console.log('Parsing disulfide part:', part);
+        
+        // Формат: Cys5-Cys34 (с пробелами или без)
+        var match = part.match(/Cys\s*(\d+[A-Za-z]?)\s*-\s*Cys\s*(\d+[A-Za-z]?)/i);
         if (match) {
-            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
+            bonds.push({
+                cys1: match[1],
+                cys2: match[2],
+                raw: part
+            });
+            console.log('  Found bond:', match[1], '-', match[2]);
             continue;
         }
         
-        match = part.match(/Cys\s*\((\d+[A-Za-z]?)\)\s*-\s*Cys\s*\((\d+[A-Za-z]?)\)/i);
+        // Формат: Cys(5)-Cys(34)
+        match = part.match(/Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)\s*-\s*Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)/i);
         if (match) {
-            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
+            bonds.push({
+                cys1: match[1],
+                cys2: match[2],
+                raw: part
+            });
+            console.log('  Found bond (parens):', match[1], '-', match[2]);
         }
     }
     
+    console.log('Total bonds parsed:', bonds.length);
     return bonds;
 }
 
