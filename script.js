@@ -330,31 +330,123 @@ function parsePDBHeader(pdbContent) {
     var lines = pdbContent.split('\n');
     var header = {
         title: '',
-        keywords: '',
-        organism: ''
+        moleculeChains: {},  // MOL_ID -> { molecule, chains: [] }
+        chainInfo: {}         // chain -> { molecule, organism }
     };
     
-    for (var i = 0; i < Math.min(100, lines.length); i++) {
+    var currentMolId = null;
+    var currentMolecule = null;
+    var currentChains = [];
+    
+    // Первый проход - собираем MOL_ID и молекулы
+    for (var i = 0; i < Math.min(200, lines.length); i++) {
         var line = lines[i];
         
-        // TITLE - общее описание
+        // TITLE
         if (line.startsWith('TITLE')) {
-            var titlePart = line.substring(10).trim();
-            if (titlePart) {
-                header.title += (header.title ? ' ' : '') + titlePart;
+            var part = line.substring(10).trim();
+            if (part && header.title.indexOf(part) === -1) {
+                header.title += (header.title ? ' ' : '') + part;
             }
         }
         
-        // KEYWDS - ключевые слова
+        // COMPND
+        if (line.startsWith('COMPND')) {
+            var text = line.substring(10).trim();
+            
+            // MOL_ID
+            var molIdMatch = text.match(/MOL_ID:\s*(\d+)/);
+            if (molIdMatch) {
+                // Сохраняем предыдущий
+                if (currentMolId && currentMolecule) {
+                    header.moleculeChains[currentMolId] = {
+                        molecule: currentMolecule,
+                        chains: currentChains.slice()
+                    };
+                }
+                currentMolId = molIdMatch[1];
+                currentMolecule = null;
+                currentChains = [];
+            }
+            
+            // MOLECULE
+            var molMatch = text.match(/MOLECULE:\s*(.+?)\s*;?\s*$/);
+            if (molMatch && currentMolId) {
+                currentMolecule = molMatch[1].trim();
+            }
+            
+            // CHAIN
+            var chainMatch = text.match(/CHAIN:\s*([A-Za-z0-9, ]+);/);
+            if (chainMatch && currentMolId) {
+                var chains = chainMatch[1].split(',').map(function(c) { return c.trim(); });
+                currentChains = chains;
+            }
+        }
+        
+        // KEYWDS
         if (line.startsWith('KEYWDS')) {
-            header.keywords += (header.keywords ? ' ' : '') + line.substring(10).trim();
+            header.keywords = (header.keywords || '') + ' ' + line.substring(10).trim();
         }
-        
-        // SOURCE - организм
-        if (line.startsWith('SOURCE') && line.substring(10).trim().startsWith('ORGANISM_SCIENTIFIC')) {
-            header.organism = line.substring(10).replace('ORGANISM_SCIENTIFIC:', '').trim();
+    }
+    
+    // Сохраняем последний
+    if (currentMolId && currentMolecule) {
+        header.moleculeChains[currentMolId] = {
+            molecule: currentMolecule,
+            chains: currentChains.slice()
+        };
+    }
+    
+    // Второй проход - организмы по MOL_ID
+    var srcMolId = null;
+    for (var i = 0; i < Math.min(200, lines.length); i++) {
+        var line = lines[i];
+        if (line.startsWith('SOURCE')) {
+            var text = line.substring(10).trim();
+            
+            var molIdMatch = text.match(/MOL_ID:\s*(\d+)/);
+            if (molIdMatch) {
+                srcMolId = molIdMatch[1];
+            }
+            
+            if (text.startsWith('ORGANISM_SCIENTIFIC:') && srcMolId) {
+                var org = text.replace('ORGANISM_SCIENTIFIC:', '').trim();
+                if (header.moleculeChains[srcMolId]) {
+                    header.moleculeChains[srcMolId].organism = org;
+                }
+            }
         }
+    }
+    
+    // Строим chainInfo
+    for (var molId in header.moleculeChains) {
+        var mc = header.moleculeChains[molId];
+        var molName = mc.molecule || 'Unknown';
+        var organism = mc.organism || '';
         
+        mc.chains.forEach(function(chain) {
+            header.chainInfo[chain] = {
+                molecule: molName,
+                organism: organism
+            };
+        });
+    }
+    
+    return header;
+}
+
+// Функция для получения описания цепи
+function getChainDescription(chain, pdbHeader) {
+    if (pdbHeader.chainInfo && pdbHeader.chainInfo[chain]) {
+        var info = pdbHeader.chainInfo[chain];
+        var desc = info.molecule;
+        if (info.organism) {
+            desc += ' (' + info.organism + ')';
+        }
+        return desc;
+    }
+    return 'Chain ' + chain;
+}
         // COMPND - компоненты (цепь и её описание)
         if (line.startsWith('COMPND') && line.includes('CHAIN:')) {
             var compndText = line.substring(10).trim();
@@ -499,11 +591,6 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     
     // Парсим заголовок PDB
     var pdbHeader = parsePDBHeader(content);
-console.log('=== PDB Header for 1IVO ===');
-console.log('Title:', pdbHeader.title);
-console.log('Molecule:', pdbHeader.molecule);
-console.log('Organism:', pdbHeader.organism);
-console.log('Chain descriptions:', JSON.stringify(pdbHeader.chainDescriptions));
 
 // Выведем первые 200 строк PDB для анализа
 var lines = content.split('\n');
@@ -664,20 +751,12 @@ for (var i = 0; i < 100; i++) {
         function(atom) {
             if (atom) {
                  var fullName = getFullResidueName(atom.resn);
-                var tooltipText = fullName + ' (' + atom.resn + ' ' + atom.resi + ')';
-                
-                // Добавляем цепь
-                tooltipText += ' - Chain ' + atom.chain;
-                
-                // Добавляем описание цепи из заголовка PDB
-                if (pdbHeader.chainInfo && pdbHeader.chainInfo[atom.chain]) {
-                    tooltipText += '\n' + pdbHeader.chainInfo[atom.chain];
-                }
-                
-                // Если есть название структуры
-                if (pdbHeader.title) {
-                    tooltipText += '\n' + pdbHeader.title.substring(0, 80) + (pdbHeader.title.length > 80 ? '...' : '');
-                }
+                var chainDesc = getChainDescription(atom.chain, pdbHeader);
+var tooltipText = fullName + ' (' + atom.resn + ' ' + atom.resi + ') — ' + chainDesc;
+
+if (pdbHeader.title) {
+    tooltipText += '<br><span style="color:#a0aec0;font-size:11px;">' + pdbHeader.title.substring(0, 120) + '</span>';
+}
                 
                 hoverPopup.innerHTML = tooltipText.replace(/\n/g, '<br>');
                 hoverPopup.style.display = 'block';
