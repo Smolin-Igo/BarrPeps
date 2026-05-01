@@ -112,9 +112,16 @@ function loadExcelFile() {
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
                 var worksheet = workbook.Sheets[sheetName];
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
-                
                 var lowerName = sheetName.toLowerCase();
+                
+                // Для peptides используем специальные опции
+                var jsonData;
+                if (lowerName === 'peptides') {
+                    jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
+                } else {
+                    jsonData = XLSX.utils.sheet_to_json(worksheet);
+                }
+                
                 if (lowerName === 'peptides') {
                     peptidesData = jsonData;
                 } else if (lowerName === 'experiments') {
