@@ -267,6 +267,7 @@ function processAllData() {
             molecular_formula: p['molecular_formula'] || '',
             structure_type: p['conformation'] || p['structure_type'] || 'N/A',
             disulfide_bridge: p['disulfide_bridge'] || '',
+            disulfide_bonds: parseDisulfideBonds(p['disulfide_bridge'] || ''),
             nature: p['nature'] || '',
             source_organism: p['origin'] || p['source_organism'] || 'N/A',
             experiments: experimentsMap[pid] || [],
@@ -327,6 +328,50 @@ function convertThreeToOne(threeLetter) {
         'UNK': 'X'
     };
     return aaMap[threeLetter.toUpperCase()] || '';
+}
+
+function parseDisulfideBonds(disulfideStr) {
+    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') {
+        return [];
+    }
+    
+    var bonds = [];
+    
+    // Форматы:
+    // "Cys2-Cys7" - простой
+    // "Cys1-Cys16; Cys8-Cys20; Cys15-Cys26" - множественные через ;
+    // "CysA6-CysA11; CysA7-CysB7; CysA20-CysB19" - с цепями (инсулин)
+    // "Cys2-Cys7, Cys1-Cys15" - через запятую
+    // "Cys6A-Cys11A, Cys7A-Cys7B, Cys19B-Cys20A" - другой формат
+    
+    // Разделяем по ; или ,
+    var parts = disulfideStr.split(/[;,]/);
+    
+    for (var i = 0; i < parts.length; i++) {
+        var part = parts[i].trim();
+        if (!part) continue;
+        
+        // Ищем паттерн CysXXX-CysYYY
+        var match = part.match(/Cys[-\s]*(\d+[A-Za-z]?)\s*-\s*Cys[-\s]*(\d+[A-Za-z]?)/i);
+        if (match) {
+            bonds.push({
+                cys1: match[1],
+                cys2: match[2],
+                raw: part
+            });
+        }
+        // Также пробуем формат Cys(1)-Cys(11)
+        match = part.match(/Cys\s*\((\d+[A-Za-z]?)\)\s*-\s*Cys\s*\((\d+[A-Za-z]?)\)/i);
+        if (match) {
+            bonds.push({
+                cys1: match[1],
+                cys2: match[2],
+                raw: part
+            });
+        }
+    }
+    
+    return bonds;
 }
 
 function findDisulfideBonds(pdbContent) {
@@ -402,7 +447,7 @@ function findDisulfideBonds(pdbContent) {
     return { bonds: bonds, sulfurInBonds: sulfurInBonds };
 }
 
-function renderPDBStructure(pdbContent, pdbId) {
+function renderPDBStructure(pdbContent, pdbId, disulfideBondsFromDB) {
     var container = document.getElementById('structure-viewer-pdb');
     if (!container) return;
     
@@ -411,9 +456,87 @@ function renderPDBStructure(pdbContent, pdbId) {
         return;
     }
     
-    var result = findDisulfideBonds(pdbContent);
-    disulfideBonds = result.bonds;
-    var sulfurInBonds = result.sulfurInBonds;
+    // Находим ВСЕ цистеины в PDB
+    var lines = pdbContent.split('\n');
+    var cysteineResidues = {}; // ключ: resSeq, значение: {resSeq, chain, x, y, z}
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('ATOM')) {
+            var atomName = line.substring(12, 16).trim();
+            var resName = line.substring(17, 20).trim();
+            var chainId = line.substring(21, 22).trim();
+            var resSeq = parseInt(line.substring(22, 26).trim());
+            
+            if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
+                var x = parseFloat(line.substring(30, 38));
+                var y = parseFloat(line.substring(38, 46));
+                var z = parseFloat(line.substring(46, 54));
+                
+                var key = chainId + '_' + resSeq;
+                cysteineResidues[key] = {
+                    resSeq: resSeq,
+                    chain: chainId,
+                    x: x, y: y, z: z
+                };
+            }
+        }
+    }
+    
+    console.log('Found cysteine residues:', Object.keys(cysteineResidues).length);
+    console.log('Disulfide bonds from DB:', disulfideBondsFromDB);
+    
+    // Строим связи на основе БД
+    var matchedBonds = [];
+    var unmatchedBonds = [];
+    
+    if (disulfideBondsFromDB && disulfideBondsFromDB.length > 0) {
+        for (var i = 0; i < disulfideBondsFromDB.length; i++) {
+            var bond = disulfideBondsFromDB[i];
+            var cys1 = bond.cys1;
+            var cys2 = bond.cys2;
+            
+            // Ищем цистеины с такими номерами
+            var found1 = null;
+            var found2 = null;
+            
+            for (var key in cysteineResidues) {
+                var cys = cysteineResidues[key];
+                var cysResSeq = String(cys.resSeq);
+                
+                // Проверяем точное совпадение или совпадение с цепью (например, A6 или 6A)
+                if (cysResSeq === cys1 || cysResSeq === cys1.replace(/[A-Za-z]/g, '')) {
+                    found1 = cys;
+                }
+                if (cysResSeq === cys2 || cysResSeq === cys2.replace(/[A-Za-z]/g, '')) {
+                    found2 = cys;
+                }
+                
+                // Для формата CysA6 - ищем цепь A и остаток 6
+                var chainMatch1 = cys1.match(/^([A-Za-z])(\d+)$/);
+                if (chainMatch1 && cys.chain === chainMatch1[1] && cysResSeq === chainMatch1[2]) {
+                    found1 = cys;
+                }
+                var chainMatch2 = cys2.match(/^([A-Za-z])(\d+)$/);
+                if (chainMatch2 && cys.chain === chainMatch2[1] && cysResSeq === chainMatch2[2]) {
+                    found2 = cys;
+                }
+            }
+            
+            if (found1 && found2) {
+                matchedBonds.push({
+                    cys1: found1,
+                    cys2: found2,
+                    label: bond.raw || ('Cys' + cys1 + '-Cys' + cys2)
+                });
+            } else {
+                unmatchedBonds.push(bond);
+            }
+        }
+    }
+    
+    console.log('Matched bonds:', matchedBonds.length);
+    console.log('Unmatched bonds:', unmatchedBonds.length);
     
     container.innerHTML = '';
     
@@ -422,7 +545,8 @@ function renderPDBStructure(pdbContent, pdbId) {
     pdbViewer.zoomTo();
     
     window.pdbContentCache = pdbContent;
-    window.sulfurInBonds = sulfurInBonds;
+    window.disulfideBonds = matchedBonds;
+    window.allCysteineResidues = cysteineResidues;
     
     setRepresentation('cartoon');
 }
@@ -441,28 +565,28 @@ function setRepresentation(type) {
             } 
         });
         
-        if (window.sulfurInBonds && disulfideBonds.length > 0) {
-            for (var i = 0; i < disulfideBonds.length; i++) {
-                var bond = disulfideBonds[i];
-                pdbViewer.addStyle({resn: "CYS", resi: bond.cys1, atom: "SG"}, { 
-                    sphere: { color: 0xffaa00, scale: 0.2, opacity: 0.9 }
-                });
-                pdbViewer.addStyle({resn: "CYS", resi: bond.cys2, atom: "SG"}, { 
-                    sphere: { color: 0xffaa00, scale: 0.2, opacity: 0.9 }
-                });
+        // Выделяем ВСЕ цистеины
+        if (window.allCysteineResidues) {
+            for (var key in window.allCysteineResidues) {
+                var cys = window.allCysteineResidues[key];
+                pdbViewer.addStyle(
+                    { chain: cys.chain, resi: cys.resSeq, atom: "SG" },
+                    { sphere: { color: 0xffaa00, scale: 0.2, opacity: 0.9 } }
+                );
             }
         }
         
         pdbViewer.removeAllShapes();
         
-        if (disulfideBonds && disulfideBonds.length > 0) {
-            for (var i = 0; i < disulfideBonds.length; i++) {
-                var bond = disulfideBonds[i];
-                if (bond.x1 && bond.x2) {
+        // Добавляем связи из БД
+        if (window.disulfideBonds && window.disulfideBonds.length > 0) {
+            for (var i = 0; i < window.disulfideBonds.length; i++) {
+                var bond = window.disulfideBonds[i];
+                if (bond.cys1.x && bond.cys2.x) {
                     try {
                         pdbViewer.addCylinder({
-                            start: {x: bond.x1, y: bond.y1, z: bond.z1},
-                            end: {x: bond.x2, y: bond.y2, z: bond.z2},
+                            start: {x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z},
+                            end: {x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z},
                             radius: 0.15,
                             color: 0xffaa00,
                             fromCap: 1,
@@ -481,28 +605,26 @@ function setRepresentation(type) {
             sphere: { colorscheme: 'elem', scale: 0.25 }
         });
         
-        if (window.sulfurInBonds && disulfideBonds.length > 0) {
-            for (var i = 0; i < disulfideBonds.length; i++) {
-                var bond = disulfideBonds[i];
-                pdbViewer.addStyle({resn: "CYS", resi: bond.cys1, atom: "SG"}, { 
-                    sphere: { color: 0xffaa00, scale: 0.25, opacity: 0.9 }
-                });
-                pdbViewer.addStyle({resn: "CYS", resi: bond.cys2, atom: "SG"}, { 
-                    sphere: { color: 0xffaa00, scale: 0.25, opacity: 0.9 }
-                });
+        if (window.allCysteineResidues) {
+            for (var key in window.allCysteineResidues) {
+                var cys = window.allCysteineResidues[key];
+                pdbViewer.addStyle(
+                    { chain: cys.chain, resi: cys.resSeq, atom: "SG" },
+                    { sphere: { color: 0xffaa00, scale: 0.25, opacity: 0.9 } }
+                );
             }
         }
         
         pdbViewer.removeAllShapes();
         
-        if (disulfideBonds && disulfideBonds.length > 0) {
-            for (var i = 0; i < disulfideBonds.length; i++) {
-                var bond = disulfideBonds[i];
-                if (bond.x1 && bond.x2) {
+        if (window.disulfideBonds && window.disulfideBonds.length > 0) {
+            for (var i = 0; i < window.disulfideBonds.length; i++) {
+                var bond = window.disulfideBonds[i];
+                if (bond.cys1.x && bond.cys2.x) {
                     try {
                         pdbViewer.addCylinder({
-                            start: {x: bond.x1, y: bond.y1, z: bond.z1},
-                            end: {x: bond.x2, y: bond.y2, z: bond.z2},
+                            start: {x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z},
+                            end: {x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z},
                             radius: 0.18,
                             color: 0xffaa00,
                             fromCap: 1,
@@ -541,7 +663,10 @@ function switchPDB(index) {
     if (pdbIdSpan) pdbIdSpan.textContent = structure.id;
     if (rcsbLink) rcsbLink.href = 'https://www.rcsb.org/structure/' + structure.id;
     
-    renderPDBStructure(structure.content, structure.id);
+    // Получаем дисульфидные связи из глобальной переменной
+    var disulfideBonds = window.currentDisulfideBonds || [];
+    
+    renderPDBStructure(structure.content, structure.id, disulfideBonds);
 }
 
 function openRelatedPdb() {
@@ -1510,9 +1635,11 @@ if (literatureHtml) {
     var detailContainer = document.getElementById('peptideDetail');
     if (detailContainer) detailContainer.innerHTML = html;
     
+    
     if (hasPDB && validStructures.length > 0) {
         setTimeout(function() {
-            renderPDBStructure(validStructures[0].content, validStructures[0].id);
+            window.currentDisulfideBonds = peptide.disulfide_bonds;
+            renderPDBStructure(validStructures[0].content, validStructures[0].id, peptide.disulfide_bonds);
         }, 100);
     }
 }
