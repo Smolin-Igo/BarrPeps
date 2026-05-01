@@ -741,6 +741,37 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     }
     
     pdbViewer.zoomTo();
+
+// Попытка добавить hover через setHoverable
+try {
+    pdbViewer.setHoverable({}, true, 
+        function(atom) {
+            if (atom) {
+                var tooltip = document.getElementById('pdbTooltip');
+                var fullName = getFullResidueName(atom.resn);
+                if (tooltip && fullName) {
+                    tooltip.innerHTML = '<strong>' + fullName + ' (' + atom.resn + ')</strong> — Chain ' + atom.chain + ', Pos ' + atom.resi;
+                    tooltip.style.display = 'block';
+                }
+            }
+        },
+        function() {
+            var tooltip = document.getElementById('pdbTooltip');
+            if (tooltip) tooltip.style.display = 'none';
+        }
+    );
+} catch(e) {
+    console.log('setHoverable not supported');
+}
+
+// Отслеживание мыши для позиции тултипа
+document.addEventListener('mousemove', function(e) {
+    var tooltip = document.getElementById('pdbTooltip');
+    if (tooltip && tooltip.style.display === 'block') {
+        tooltip.style.left = (e.clientX + 15) + 'px';
+        tooltip.style.top = (e.clientY - 30) + 'px';
+    }
+});
     
     // Стрелки между атомами серы
     setTimeout(function() {
