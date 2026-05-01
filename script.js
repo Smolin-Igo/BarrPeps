@@ -676,31 +676,85 @@ function toggleFullscreenPDB() {
     var container = window.pdbContainer || document.getElementById('structure-viewer-pdb');
     if (!container) return;
     
-    var isFullscreen = container.classList.contains('fullscreen-pdb');
+    var modal = document.getElementById('fullscreenModal');
+    var viewerDiv = document.getElementById('fullscreenViewer');
     
-    if (!isFullscreen) {
-        // Просто добавляем класс — не перемещаем контейнер
-        container.classList.add('fullscreen-pdb');
+    if (!modal || !viewerDiv) return;
+    
+    var isVisible = modal.style.display === 'block';
+    
+    if (!isVisible) {
+        // Показываем модальное окно
+        modal.style.display = 'block';
         document.body.style.overflow = 'hidden';
+        
+        // Очищаем и создаём новый viewer
+        viewerDiv.innerHTML = '';
+        
+        var fullViewer = $3Dmol.createViewer(viewerDiv, { backgroundColor: 'white' });
+        fullViewer.addModel(window.pdbContentCache, 'pdb');
+        
+        // Копируем стили из основного viewer'а
+        var info = window.currentPdbInfo || {};
+        var peptideInfo = info.peptideInfo;
+        var peptideBonds = info.peptideBonds || [];
+        
+        // Раскраска
+        if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
+            fullViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
+            for (var i = 0; i < peptideInfo.residues.length; i++) {
+                var color = getRainbowColor(i, peptideInfo.residues.length);
+                fullViewer.addStyle(
+                    { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
+                    { cartoon: { color: color, opacity: 0.95 } }
+                );
+            }
+        } else {
+            fullViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
+        }
+        
+        // Сферы и стрелки
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
+            fullViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.5, color: 0xffcc00 });
+            fullViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.5, color: 0xffcc00 });
+        }
+        
+        fullViewer.zoomTo();
+        
+        setTimeout(function() {
+            for (var i = 0; i < peptideBonds.length; i++) {
+                var b = peptideBonds[i];
+                fullViewer.addArrow({
+                    start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                    end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+                    radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+                });
+            }
+            fullViewer.render();
+        }, 100);
+        
+        // Сохраняем ссылку на fullscreen viewer
+        window.fullscreenViewer = fullViewer;
         
         var btn = document.getElementById('btn-fullscreen');
         if (btn) btn.textContent = '✕ Exit';
         
     } else {
-        container.classList.remove('fullscreen-pdb');
-        document.body.style.overflow = '';
-        
-        var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = '⛶ Fullscreen';
+        closeFullscreenModal();
     }
+}
+
+function closeFullscreenModal() {
+    var modal = document.getElementById('fullscreenModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+    window.fullscreenViewer = null;
     
-    // Обновляем размеры viewer'а и перерисовываем
-    setTimeout(function() {
-        if (pdbViewer) {
-            pdbViewer.resize();
-            pdbViewer.render();
-        }
-    }, 300);
+    var btn = document.getElementById('btn-fullscreen');
+    if (btn) btn.textContent = '⛶ Fullscreen';
 }
 
 function setRepresentation(type) {
@@ -1233,9 +1287,8 @@ window.toggleSourceDropdown=toggleSourceDropdown;
 window.updateSourceSelectionAndFilter=updateSourceSelectionAndFilter;
 window.showUnderConstruction=showUnderConstruction;
 window.closeModal=closeModal;
-// Экспортируем функцию полноэкранного режима
 window.toggleFullscreenPDB = toggleFullscreenPDB;
-window.pdbContainer = null;
+window.closeFullscreenModal = closeFullscreenModal;
 
 document.addEventListener('DOMContentLoaded',function(){
     if(typeof XLSX!=='undefined') loadExcelFile();
