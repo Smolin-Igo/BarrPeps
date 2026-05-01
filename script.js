@@ -274,13 +274,22 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     }
     
     container.innerHTML = '';
-    
-    // Получаем актуальные размеры контейнера
-    var cw = container.clientWidth || 800;
-    var ch = container.clientHeight || 400;
-    
-    pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white', width: cw, height: ch });
-    pdbViewer.addModel(content, 'pdb');
+    container.style.width = container.clientWidth + 'px';
+container.style.height = container.clientHeight + 'px';
+
+var rect = container.getBoundingClientRect();
+if (rect.height < 100) {
+    container.style.height = '750px';
+    rect = container.getBoundingClientRect();
+}
+
+pdbViewer = $3Dmol.createViewer(container, { 
+    backgroundColor: 'white',
+    width: rect.width || 800,
+    height: rect.height || 750
+});
+pdbViewer.addModel(content, 'pdb');
+
     
     var peptideColors = [];
     if (peptideInfo && peptideInfo.residues.length > 0) {
