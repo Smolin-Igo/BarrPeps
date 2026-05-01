@@ -100,38 +100,39 @@ function restoreFilters() {
 }
 
 function loadExcelFile() {
+    console.log('Loading database.xlsx...');
+    
     fetch('database.xlsx')
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP error');
+            if (!response.ok) throw new Error('HTTP error: ' + response.status);
             return response.arrayBuffer();
         })
         .then(function(arrayBuffer) {
             var workbook = XLSX.read(arrayBuffer, { type: 'array' });
             var sheetNames = workbook.SheetNames;
+            console.log('Sheets found:', sheetNames);
             
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
                 var worksheet = workbook.Sheets[sheetName];
+                var jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
                 var lowerName = sheetName.toLowerCase();
-                
-                // Для peptides используем специальные опции
-                var jsonData;
-                if (lowerName === 'peptides') {
-                    jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
-                } else {
-                    jsonData = XLSX.utils.sheet_to_json(worksheet);
-                }
-                
                 if (lowerName === 'peptides') {
                     peptidesData = jsonData;
+                    console.log('Peptides:', peptidesData.length);
                 } else if (lowerName === 'experiments') {
                     experimentsData = jsonData;
+                    console.log('Experiments:', experimentsData.length);
                 } else if (lowerName === 'references') {
                     referencesData = jsonData;
+                    console.log('References:', referencesData.length);
                 } else if (lowerName === 'modifications') {
                     modificationsData = jsonData;
+                    console.log('Modifications:', modificationsData.length);
                 } else if (lowerName === 'pdb') {
                     pdbData = jsonData;
+                    console.log('PDB:', pdbData.length);
                 }
             }
             
@@ -142,11 +143,10 @@ function loadExcelFile() {
             }
         })
         .catch(function(error) {
-            console.error('Error loading Excel:', error);
+            console.error('Error:', error);
             useFallbackData();
         });
 }
-
 function useFallbackData() {
     peptidesData = [];
     processAllData();
