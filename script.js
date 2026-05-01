@@ -445,10 +445,12 @@ function findPeptideChain(pdbContent, peptideSequence) {
     return null;
 }
 
-// Сохраняем последние координаты мыши глобально для hover
-var lastMouseEvent = null;
+// Сохраняем последние координаты мыши
+var lastMouseX = 0;
+var lastMouseY = 0;
 document.addEventListener('mousemove', function(e) {
-    lastMouseEvent = e;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
 });
 
 function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFromDB) {
@@ -540,10 +542,14 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
     pdbViewer.addModel(pdbContent, 'pdb');
     
+    // Сохраняем оригинальные цвета пептида для восстановления
+    var peptideColors = [];
+    
     if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
         pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
         for (var i = 0; i < peptideInfo.residues.length; i++) {
             var color = getRainbowColor(i, peptideInfo.residues.length);
+            peptideColors.push({ chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq, color: color });
             pdbViewer.addStyle(
                 { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
                 { cartoon: { color: color, opacity: 0.95 } }
@@ -574,6 +580,9 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     }, 100);
     
     // Hover подсказка
+    var oldHover = document.getElementById('atomHoverPopup');
+    if (oldHover) oldHover.remove();
+    
     var hoverPopup = document.createElement('div');
     hoverPopup.id = 'atomHoverPopup';
     hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
@@ -581,29 +590,45 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     var lastHoveredKey = null;
     
+    // Функция восстановления цвета
+    function restoreResidueColor(key) {
+        if (!key) return;
+        var parts = key.split('_');
+        var chain = parts[0];
+        var resi = parseInt(parts[1]);
+        
+        // Ищем оригинальный цвет пептида
+        for (var i = 0; i < peptideColors.length; i++) {
+            if (peptideColors[i].chain === chain && peptideColors[i].resi === resi) {
+                pdbViewer.addStyle(
+                    { chain: chain, resi: resi },
+                    { cartoon: { color: peptideColors[i].color, opacity: 0.95 } }
+                );
+                return;
+            }
+        }
+        // Если не нашли — возвращаем серый
+        pdbViewer.addStyle(
+            { chain: chain, resi: resi },
+            { cartoon: { color: 0x445566, opacity: 0.45 } }
+        );
+    }
+    
     pdbViewer.setHoverable({}, true, 
         function(atom) {
             if (atom) {
-                var fullName = getFullResidueName(atom.resn);
-                hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+                hoverPopup.textContent = getFullResidueName(atom.resn) + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
                 hoverPopup.style.display = 'block';
-                
-                if (lastMouseEvent) {
-                    hoverPopup.style.left = (lastMouseEvent.clientX + 18) + 'px';
-                    hoverPopup.style.top = (lastMouseEvent.clientY - 15) + 'px';
-                }
+                hoverPopup.style.left = (lastMouseX + 18) + 'px';
+                hoverPopup.style.top = (lastMouseY - 15) + 'px';
                 
                 var currentKey = atom.chain + '_' + atom.resi;
                 if (lastHoveredKey !== currentKey) {
-                    if (lastHoveredKey) {
-                        var oldParts = lastHoveredKey.split('_');
-                        pdbViewer.setStyle(
-                            { chain: oldParts[0], resi: parseInt(oldParts[1]) },
-                            { cartoon: { color: 0x445566, opacity: 0.45 } }
-                        );
-                    }
+                    // Восстанавливаем предыдущий
+                    if (lastHoveredKey) restoreResidueColor(lastHoveredKey);
                     
-                    pdbViewer.setStyle(
+                    // Подсвечиваем новый — ТОЛЬКО cartoon, не меняя форму
+                    pdbViewer.addStyle(
                         { chain: atom.chain, resi: atom.resi },
                         { cartoon: { color: 0xff4488, opacity: 1.0 } }
                     );
@@ -614,11 +639,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
             } else {
                 hoverPopup.style.display = 'none';
                 if (lastHoveredKey) {
-                    var oldParts = lastHoveredKey.split('_');
-                    pdbViewer.setStyle(
-                        { chain: oldParts[0], resi: parseInt(oldParts[1]) },
-                        { cartoon: { color: 0x445566, opacity: 0.45 } }
-                    );
+                    restoreResidueColor(lastHoveredKey);
                     lastHoveredKey = null;
                     pdbViewer.render();
                 }
@@ -627,11 +648,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         function() {
             hoverPopup.style.display = 'none';
             if (lastHoveredKey) {
-                var oldParts = lastHoveredKey.split('_');
-                pdbViewer.setStyle(
-                    { chain: oldParts[0], resi: parseInt(oldParts[1]) },
-                    { cartoon: { color: 0x445566, opacity: 0.45 } }
-                );
+                restoreResidueColor(lastHoveredKey);
                 lastHoveredKey = null;
                 pdbViewer.render();
             }
