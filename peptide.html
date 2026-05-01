@@ -102,7 +102,7 @@
         .structure-container {
     position: relative;
     width: 100%;
-    height: 260px;
+    height: 400px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
@@ -193,7 +193,7 @@
         
         @media (min-width: 768px) {
             .structure-container {
-                height: 320px;
+                height: 450px;
             }
             
             .back-button {
@@ -220,7 +220,7 @@
         
         @media (min-width: 1024px) {
             .structure-container {
-                height: 340px;
+                height: 500px;
             }
         }
     </style>
@@ -321,14 +321,5 @@
             }, 100);
         };
     </script>
-    <div id="fullscreenModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999; background:rgba(0,0,0,0.85); justify-content:center; align-items:center;">
-    <div style="position:relative; width:90vw; height:85vh; max-width:1200px; max-height:900px; background:white; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#2c5282; color:white;">
-            <h3 style="margin:0; font-size:16px;" id="fullscreenTitle">3D Structure Viewer</h3>
-            <button onclick="closeFullscreenModal()" style="background:#e53e3e; color:white; border:none; border-radius:50%; width:32px; height:32px; font-size:18px; cursor:pointer;">✕</button>
-        </div>
-        <div id="fullscreenViewer" style="width:100%; height:calc(100% - 52px); position:relative;"></div>
-    </div>
-</div>
 </body>
 </html>
