@@ -751,25 +751,40 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.render();
     }, 100);
     
-    // Подсказка при клике на атом
-    pdbViewer.setClickable({}, true, function(atom, viewer, event) {
-        if (!atom) return;
-        
-        var fullName = getFullResidueName(atom.resn);
-        var text = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
-        
-        document.querySelectorAll('.atom-popup').forEach(function(el) { el.remove(); });
-        
-        var popup = document.createElement('div');
-        popup.className = 'atom-popup';
-        popup.textContent = text;
-        popup.style.cssText = 'position:fixed; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
-        popup.style.left = (event.clientX + 18) + 'px';
-        popup.style.top = (event.clientY - 15) + 'px';
-        document.body.appendChild(popup);
-        
-        setTimeout(function() { popup.remove(); }, 2500);
-    });
+    // Подсказка при наведении на атом
+var hoverPopup = null;
+
+// Создаем окошко один раз
+hoverPopup = document.createElement('div');
+hoverPopup.className = 'atom-hover-popup';
+hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
+document.body.appendChild(hoverPopup);
+
+// Отслеживаем движение мыши
+document.addEventListener('mousemove', function(e) {
+    if (hoverPopup.style.display === 'block') {
+        hoverPopup.style.left = (e.clientX + 18) + 'px';
+        hoverPopup.style.top = (e.clientY - 15) + 'px';
+    }
+});
+
+// Используем setHoverable
+pdbViewer.setHoverable({}, true, 
+    function(atom, viewer, event) {
+        // При наведении
+        if (atom) {
+            var fullName = getFullResidueName(atom.resn);
+            hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+            hoverPopup.style.display = 'block';
+            hoverPopup.style.left = (event.clientX + 18) + 'px';
+            hoverPopup.style.top = (event.clientY - 15) + 'px';
+        }
+    },
+    function(atom) {
+        // При уходе курсора
+        hoverPopup.style.display = 'none';
+    }
+);
     
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
