@@ -751,14 +751,12 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.render();
     }, 100);
     
-    // Подсказка при наведении + подсветка остатка
-var hoverPopup = null;
-var lastHoveredResidue = null;
-
-hoverPopup = document.createElement('div');
-hoverPopup.className = 'atom-hover-popup';
+// Подсказка при наведении + подсветка через пересоздание стиля
+var hoverPopup = document.createElement('div');
 hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
 document.body.appendChild(hoverPopup);
+
+var lastHoveredKey = null;
 
 document.addEventListener('mousemove', function(e) {
     if (hoverPopup.style.display === 'block') {
@@ -776,35 +774,52 @@ pdbViewer.setHoverable({}, true,
             hoverPopup.style.left = (event.clientX + 18) + 'px';
             hoverPopup.style.top = (event.clientY - 15) + 'px';
             
-            // Подсвечиваем остаток
-            var residueKey = atom.chain + '_' + atom.resi;
-            if (lastHoveredResidue !== residueKey) {
-                // Убираем подсветку с предыдущего
-                if (lastHoveredResidue) {
-                    var prev = lastHoveredResidue.split('_');
-                    pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
+            // Подсвечиваем — просто добавляем яркий стиль поверх существующего
+            var currentKey = atom.chain + '_' + atom.resi;
+            if (lastHoveredKey !== currentKey) {
+                // Убираем старую подсветку
+                if (lastHoveredKey) {
+                    var oldParts = lastHoveredKey.split('_');
+                    pdbViewer.setStyle(
+                        { chain: oldParts[0], resi: parseInt(oldParts[1]) },
+                        { cartoon: { color: 0x445566, opacity: 0.45 } }
+                    );
                 }
                 
-                // Подсвечиваем текущий — ярким цветом
-                pdbViewer.addStyle(
+                // Добавляем новую подсветку — ярко-розовый
+                pdbViewer.setStyle(
                     { chain: atom.chain, resi: atom.resi },
-                    { 
-                        stick: { color: 0xff4488, radius: 0.15 },
-                        sphere: { color: 0xff4488, scale: 0.35, opacity: 1.0 }
-                    }
+                    { cartoon: { color: 0xff4488 }, stick: { color: 0xff4488, radius: 0.2 }, sphere: { color: 0xff4488, scale: 0.5 } }
                 );
                 
-                lastHoveredResidue = residueKey;
+                lastHoveredKey = currentKey;
                 pdbViewer.render();
             }
         } else {
             hoverPopup.style.display = 'none';
-            removeHoverHighlight();
+            // Убираем подсветку
+            if (lastHoveredKey) {
+                var oldParts = lastHoveredKey.split('_');
+                pdbViewer.setStyle(
+                    { chain: oldParts[0], resi: parseInt(oldParts[1]) },
+                    { cartoon: { color: 0x445566, opacity: 0.45 } }
+                );
+                lastHoveredKey = null;
+                pdbViewer.render();
+            }
         }
     },
     function(atom) {
         hoverPopup.style.display = 'none';
-        removeHoverHighlight();
+        if (lastHoveredKey) {
+            var oldParts = lastHoveredKey.split('_');
+            pdbViewer.setStyle(
+                { chain: oldParts[0], resi: parseInt(oldParts[1]) },
+                { cartoon: { color: 0x445566, opacity: 0.45 } }
+            );
+            lastHoveredKey = null;
+            pdbViewer.render();
+        }
     }
 );
 
@@ -822,70 +837,16 @@ function removeHoverHighlight() {
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
-   // Вариант через canvas
-setTimeout(function() {
-    var canvas = container.querySelector('canvas');
-    if (!canvas) return;
-    
-    var hoverPopup = document.createElement('div');
-    hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
-    document.body.appendChild(hoverPopup);
-    
-    var lastHoveredResidue = null;
-    
-    canvas.addEventListener('mousemove', function(e) {
-        var rect = canvas.getBoundingClientRect();
-        var x = e.clientX - rect.left;
-        var y = e.clientY - rect.top;
-        
-        try {
-            var atom = pdbViewer.getAtomFromViewerPoint(x, y);
-            if (atom) {
-                var fullName = getFullResidueName(atom.resn);
-                hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
-                hoverPopup.style.display = 'block';
-                hoverPopup.style.left = (e.clientX + 18) + 'px';
-                hoverPopup.style.top = (e.clientY - 15) + 'px';
-                
-                // Подсветка
-                var residueKey = atom.chain + '_' + atom.resi;
-                if (lastHoveredResidue !== residueKey) {
-                    if (lastHoveredResidue) {
-                        var prev = lastHoveredResidue.split('_');
-                        pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
-                    }
-                    
-                    pdbViewer.addStyle(
-                        { chain: atom.chain, resi: atom.resi },
-                        { stick: { color: 0xff4488, radius: 0.15 }, sphere: { color: 0xff4488, scale: 0.35 } }
-                    );
-                    
-                    lastHoveredResidue = residueKey;
-                    pdbViewer.render();
-                }
-            } else {
-                hoverPopup.style.display = 'none';
-                if (lastHoveredResidue) {
-                    var prev = lastHoveredResidue.split('_');
-                    pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
-                    pdbViewer.render();
-                    lastHoveredResidue = null;
-                }
-            }
-        } catch(err) {
-            hoverPopup.style.display = 'none';
+    setTimeout(function() {
+        if (!document.getElementById('btn-cartoon')) {
+            var cc = document.createElement('div');
+            cc.className = 'structure-controls';
+            cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
+                           '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
+            container.parentNode.appendChild(cc);
         }
-    });
-    
-    canvas.addEventListener('mouseleave', function() {
-        hoverPopup.style.display = 'none';
-        if (lastHoveredResidue) {
-            var prev = lastHoveredResidue.split('_');
-            try { pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null }); pdbViewer.render(); } catch(e) {}
-            lastHoveredResidue = null;
-        }
-    });
-}, 500);
+    }, 50);
+}
 
 function getFullResidueName(threeLetter) {
     var names = {
