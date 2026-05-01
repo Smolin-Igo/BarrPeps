@@ -822,16 +822,70 @@ function removeHoverHighlight() {
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
-    setTimeout(function() {
-        if (!document.getElementById('btn-cartoon')) {
-            var cc = document.createElement('div');
-            cc.className = 'structure-controls';
-            cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
-                           '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
-            container.parentNode.appendChild(cc);
+   // Вариант через canvas
+setTimeout(function() {
+    var canvas = container.querySelector('canvas');
+    if (!canvas) return;
+    
+    var hoverPopup = document.createElement('div');
+    hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
+    document.body.appendChild(hoverPopup);
+    
+    var lastHoveredResidue = null;
+    
+    canvas.addEventListener('mousemove', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        
+        try {
+            var atom = pdbViewer.getAtomFromViewerPoint(x, y);
+            if (atom) {
+                var fullName = getFullResidueName(atom.resn);
+                hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+                hoverPopup.style.display = 'block';
+                hoverPopup.style.left = (e.clientX + 18) + 'px';
+                hoverPopup.style.top = (e.clientY - 15) + 'px';
+                
+                // Подсветка
+                var residueKey = atom.chain + '_' + atom.resi;
+                if (lastHoveredResidue !== residueKey) {
+                    if (lastHoveredResidue) {
+                        var prev = lastHoveredResidue.split('_');
+                        pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
+                    }
+                    
+                    pdbViewer.addStyle(
+                        { chain: atom.chain, resi: atom.resi },
+                        { stick: { color: 0xff4488, radius: 0.15 }, sphere: { color: 0xff4488, scale: 0.35 } }
+                    );
+                    
+                    lastHoveredResidue = residueKey;
+                    pdbViewer.render();
+                }
+            } else {
+                hoverPopup.style.display = 'none';
+                if (lastHoveredResidue) {
+                    var prev = lastHoveredResidue.split('_');
+                    pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
+                    pdbViewer.render();
+                    lastHoveredResidue = null;
+                }
+            }
+        } catch(err) {
+            hoverPopup.style.display = 'none';
         }
-    }, 50);
-}
+    });
+    
+    canvas.addEventListener('mouseleave', function() {
+        hoverPopup.style.display = 'none';
+        if (lastHoveredResidue) {
+            var prev = lastHoveredResidue.split('_');
+            try { pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null }); pdbViewer.render(); } catch(e) {}
+            lastHoveredResidue = null;
+        }
+    });
+}, 500);
 
 function getFullResidueName(threeLetter) {
     var names = {
