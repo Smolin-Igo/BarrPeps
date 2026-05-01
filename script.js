@@ -326,6 +326,65 @@ async function fetchPDBStructure(pdbId) {
     }
 }
 
+function parsePDBHeader(pdbContent) {
+    var lines = pdbContent.split('\n');
+    var header = {
+        title: '',
+        keywords: '',
+        organism: ''
+    };
+    
+    for (var i = 0; i < Math.min(100, lines.length); i++) {
+        var line = lines[i];
+        
+        // TITLE - общее описание
+        if (line.startsWith('TITLE')) {
+            var titlePart = line.substring(10).trim();
+            if (titlePart) {
+                header.title += (header.title ? ' ' : '') + titlePart;
+            }
+        }
+        
+        // KEYWDS - ключевые слова
+        if (line.startsWith('KEYWDS')) {
+            header.keywords += (header.keywords ? ' ' : '') + line.substring(10).trim();
+        }
+        
+        // SOURCE - организм
+        if (line.startsWith('SOURCE') && line.substring(10).trim().startsWith('ORGANISM_SCIENTIFIC')) {
+            header.organism = line.substring(10).replace('ORGANISM_SCIENTIFIC:', '').trim();
+        }
+        
+        // COMPND - компоненты (цепь и её описание)
+        if (line.startsWith('COMPND') && line.includes('CHAIN:')) {
+            var compndText = line.substring(10).trim();
+            // Извлекаем описание цепи
+            var chainMatch = compndText.match(/CHAIN:\s*([A-Za-z, ]+);\s*(.+)/);
+            if (chainMatch) {
+                var chainPart = chainMatch[2].trim();
+                if (!header.chainInfo) header.chainInfo = {};
+                var chains = chainMatch[1].split(',').map(function(c) { return c.trim(); });
+                chains.forEach(function(c) {
+                    if (!header.chainInfo[c]) header.chainInfo[c] = '';
+                    header.chainInfo[c] += (header.chainInfo[c] ? ', ' : '') + chainPart;
+                });
+            }
+        }
+    }
+    
+    // Убираем повторяющиеся слова в title
+    if (header.title) {
+        var words = header.title.split(/\s+/);
+        var unique = [];
+        for (var i = 0; i < words.length; i++) {
+            if (unique.indexOf(words[i]) === -1) unique.push(words[i]);
+        }
+        header.title = unique.join(' ');
+    }
+    
+    return header;
+}
+
 function convertThreeToOne(threeLetter) {
     var map = {
         'ALA':'A','ARG':'R','ASN':'N','ASP':'D','CYS':'C','GLN':'Q','GLU':'E','GLY':'G',
@@ -437,6 +496,9 @@ function findPeptideChain(pdbContent, peptideSequence) {
 function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     var container = document.getElementById('structure-viewer-pdb');
     if (!container || !content) return;
+    
+    // Парсим заголовок PDB
+    var pdbHeader = parsePDBHeader(content);
     
     var peptideInfo = findPeptideChain(content, peptideSeq);
     if (peptideInfo && peptideSeq && peptideInfo.residues.length > peptideSeq.length * 1.5) {
@@ -587,7 +649,23 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     pdbViewer.setHoverable({}, true,
         function(atom) {
             if (atom) {
-                hoverPopup.textContent = getFullResidueName(atom.resn) + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+                 var fullName = getFullResidueName(atom.resn);
+                var tooltipText = fullName + ' (' + atom.resn + ' ' + atom.resi + ')';
+                
+                // Добавляем цепь
+                tooltipText += ' - Chain ' + atom.chain;
+                
+                // Добавляем описание цепи из заголовка PDB
+                if (pdbHeader.chainInfo && pdbHeader.chainInfo[atom.chain]) {
+                    tooltipText += '\n' + pdbHeader.chainInfo[atom.chain];
+                }
+                
+                // Если есть название структуры
+                if (pdbHeader.title) {
+                    tooltipText += '\n' + pdbHeader.title.substring(0, 80) + (pdbHeader.title.length > 80 ? '...' : '');
+                }
+                
+                hoverPopup.innerHTML = tooltipText.replace(/\n/g, '<br>');
                 hoverPopup.style.display = 'block';
                 hoverPopup.style.left = (lastMouseX + 18) + 'px';
                 hoverPopup.style.top = (lastMouseY + 18) + 'px';
