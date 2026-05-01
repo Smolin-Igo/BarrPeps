@@ -644,7 +644,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     // Получаем SSBOND записи из PDB
     var ssbonds = parseSSBOND(pdbContent);
     
-    // Находим все SG атомы
+    // Находим все SG атомы - ВАЖНО: используем точные координаты из PDB
     var allSGAtoms = {};
     var lines = pdbContent.split('\n');
     for (var i = 0; i < lines.length; i++) {
@@ -665,14 +665,13 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         }
     }
     
-    // Фильтруем дисульфидные связи - только те, где ОБА цистеина принадлежат пептиду
+    // Фильтруем - только связи на пептиде
     var peptideBonds = [];
     
     if (peptideInfo && ssbonds.length > 0) {
         for (var i = 0; i < ssbonds.length; i++) {
             var bond = ssbonds[i];
             
-            // Проверяем, что оба цистеина в цепи пептида и в нужном диапазоне
             var res1InPeptide = (bond.chain1 === peptideInfo.chain && 
                                 bond.res1 >= peptideInfo.startRes && 
                                 bond.res1 <= peptideInfo.endRes);
@@ -688,30 +687,105 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
                 
                 if (atom1 && atom2) {
                     peptideBonds.push({
-                        cys1: atom1,
-                        cys2: atom2,
-                        label: 'Cys' + bond.res1 + '-Cys' + bond.res2
+                        atom1: atom1,
+                        atom2: atom2,
+                        label: 'Cys' + bond.res1 + '-Cys' + bond.res2,
+                        chain1: bond.chain1,
+                        res1: bond.res1,
+                        chain2: bond.chain2,
+                        res2: bond.res2
                     });
                 }
             }
         }
     }
     
-    console.log('Peptide disulfide bonds in this structure:', peptideBonds.length);
-    
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
+    
+    // Добавляем модель КАК ЕСТЬ, без изменений координат
     pdbViewer.addModel(pdbContent, 'pdb');
+    pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.3 } });
+    
+    // Rainbow для пептида
+    if (peptideInfo && peptideInfo.residues) {
+        for (var i = 0; i < peptideInfo.residues.length; i++) {
+            var color = getRainbowColor(i, peptideInfo.residues.length);
+            pdbViewer.addStyle(
+                { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
+                { cartoon: { color: color, opacity: 0.95 } }
+            );
+        }
+    }
+    
+    // Подсвечиваем серу и добавляем связи ДО zoomTo
+    for (var i = 0; i < peptideBonds.length; i++) {
+        var bond = peptideBonds[i];
+        
+        // Желтые сферы на атомах серы
+        pdbViewer.addStyle(
+            { chain: bond.chain1, resi: bond.res1, atom: 'SG' },
+            { sphere: { color: 0xffcc00, radius: 0.5, scale: 1.0, opacity: 1.0 } }
+        );
+        pdbViewer.addStyle(
+            { chain: bond.chain2, resi: bond.res2, atom: 'SG' },
+            { sphere: { color: 0xffcc00, radius: 0.5, scale: 1.0, opacity: 1.0 } }
+        );
+    }
+    
     pdbViewer.zoomTo();
+    
+    // Добавляем цилиндры ПОСЛЕ zoomTo, используя addDistance (правильный метод 3Dmol)
+    for (var i = 0; i < peptideBonds.length; i++) {
+        var bond = peptideBonds[i];
+        
+        // Используем addResLabels для создания связи
+        // или создаем линию напрямую через Shape
+        try {
+            // Метод 1: используем addLine (новый API)
+            if (typeof pdbViewer.addLine === 'function') {
+                pdbViewer.addLine({
+                    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
+                    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+                    color: 0xff8800,
+                    linewidth: 3
+                });
+            } else {
+                // Метод 2: кастомный cylinder
+                pdbViewer.addCylinder({
+                    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
+                    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+                    radius: 0.15,
+                    color: 0xff8800,
+                    fromCap: true,
+                    toCap: true,
+                    dashed: false
+                });
+            }
+        } catch(e) {
+            console.log('Error adding bond:', e);
+        }
+    }
+    
+    pdbViewer.render();
     
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = {
         peptideInfo: peptideInfo,
-        peptideBonds: peptideBonds,
-        allSGAtoms: allSGAtoms
+        peptideBonds: peptideBonds
     };
+    window.currentRepresentation = 'cartoon';
     
-    setRepresentation('cartoon');
+    // Убираем старые кнопки если есть
+    var cc = document.getElementById('structure-controls-custom');
+    if (!cc) {
+        cc = document.createElement('div');
+        cc.id = 'structure-controls-custom';
+        cc.className = 'structure-controls';
+        cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
+                       '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
+        container.parentNode.insertBefore(cc, container.nextSibling);
+    }
 }
 
 function setRepresentation(type) {
