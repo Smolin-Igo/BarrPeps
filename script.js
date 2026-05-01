@@ -751,16 +751,15 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.render();
     }, 100);
     
-    // Подсказка при наведении на атом
+    // Подсказка при наведении + подсветка остатка
 var hoverPopup = null;
+var lastHoveredResidue = null;
 
-// Создаем окошко один раз
 hoverPopup = document.createElement('div');
 hoverPopup.className = 'atom-hover-popup';
 hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
 document.body.appendChild(hoverPopup);
 
-// Отслеживаем движение мыши
 document.addEventListener('mousemove', function(e) {
     if (hoverPopup.style.display === 'block') {
         hoverPopup.style.left = (e.clientX + 18) + 'px';
@@ -768,23 +767,57 @@ document.addEventListener('mousemove', function(e) {
     }
 });
 
-// Используем setHoverable
 pdbViewer.setHoverable({}, true, 
     function(atom, viewer, event) {
-        // При наведении
         if (atom) {
             var fullName = getFullResidueName(atom.resn);
             hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
             hoverPopup.style.display = 'block';
             hoverPopup.style.left = (event.clientX + 18) + 'px';
             hoverPopup.style.top = (event.clientY - 15) + 'px';
+            
+            // Подсвечиваем остаток
+            var residueKey = atom.chain + '_' + atom.resi;
+            if (lastHoveredResidue !== residueKey) {
+                // Убираем подсветку с предыдущего
+                if (lastHoveredResidue) {
+                    var prev = lastHoveredResidue.split('_');
+                    pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
+                }
+                
+                // Подсвечиваем текущий — ярким цветом
+                pdbViewer.addStyle(
+                    { chain: atom.chain, resi: atom.resi },
+                    { 
+                        stick: { color: 0xff4488, radius: 0.15 },
+                        sphere: { color: 0xff4488, scale: 0.35, opacity: 1.0 }
+                    }
+                );
+                
+                lastHoveredResidue = residueKey;
+                pdbViewer.render();
+            }
+        } else {
+            hoverPopup.style.display = 'none';
+            removeHoverHighlight();
         }
     },
     function(atom) {
-        // При уходе курсора
         hoverPopup.style.display = 'none';
+        removeHoverHighlight();
     }
 );
+
+function removeHoverHighlight() {
+    if (lastHoveredResidue) {
+        var prev = lastHoveredResidue.split('_');
+        try {
+            pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
+            pdbViewer.render();
+        } catch(e) {}
+        lastHoveredResidue = null;
+    }
+}
     
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
