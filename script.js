@@ -581,6 +581,7 @@ function findPeptideChain(pdbContent, peptideSequence) {
         var line = lines[i];
         if (line.startsWith('ATOM') && line.substring(13, 16).trim() === 'CA') {
             var chainId = line.substring(21, 22).trim();
+            // Если цепь пустая, используем ' ' или 'A' по умолчанию
             if (!chainId) chainId = ' ';
             
             var resName = line.substring(17, 20).trim();
@@ -608,25 +609,45 @@ function findPeptideChain(pdbContent, peptideSequence) {
         chains[currentChain].seq = chainSeq;
     }
     
+    console.log('Found chains:', Object.keys(chains));
+    for (var c in chains) {
+        console.log('Chain ' + c + ' length:', chains[c].seq.length, 'starts at:', chains[c].residues[0]?.resSeq, 'ends at:', chains[c].residues[chains[c].residues.length-1]?.resSeq);
+    }
+    
     var target = peptideSequence.toUpperCase();
-    console.log('Looking for peptide sequence of length:', target.length);
     
     // Ищем точное совпадение
     for (var chain in chains) {
         var idx = chains[chain].seq.indexOf(target);
         if (idx !== -1) {
-            var matchedResidues = chains[chain].residues.slice(idx, idx + target.length);
-            console.log('Found peptide in chain:', chain, 'at index:', idx, 'residues:', matchedResidues.length, 'from', matchedResidues[0].resSeq, 'to', matchedResidues[matchedResidues.length-1].resSeq);
+            console.log('Found peptide in chain:', chain, 'at index:', idx);
             return {
                 chain: chain,
-                residues: matchedResidues, // ТОЛЬКО остатки пептида
-                startRes: matchedResidues[0].resSeq,
-                endRes: matchedResidues[matchedResidues.length - 1].resSeq
+                residues: chains[chain].residues.slice(idx, idx + target.length),
+                startRes: chains[chain].residues[idx].resSeq,
+                endRes: chains[chain].residues[idx + target.length - 1].resSeq
             };
         }
     }
     
-    console.log('Peptide not found by exact match');
+    // Если точного нет, ищем лучшую цепь по длине
+    var bestChain = null;
+    for (var chain in chains) {
+        if (!bestChain || chains[chain].seq.length > chains[bestChain].seq.length) {
+            bestChain = chain;
+        }
+    }
+    
+    if (bestChain) {
+        console.log('Using best chain:', bestChain, 'length:', chains[bestChain].seq.length);
+        return {
+            chain: bestChain,
+            residues: chains[bestChain].residues,
+            startRes: chains[bestChain].residues[0].resSeq,
+            endRes: chains[bestChain].residues[chains[bestChain].residues.length - 1].resSeq
+        };
+    }
+    
     return null;
 }
 
@@ -805,10 +826,11 @@ function setRepresentation(type) {
     var peptideInfo = info.peptideInfo;
     var peptideBonds = info.peptideBonds || [];
     
-    // Стили
     if (type === 'cartoon') {
-        if (peptideInfo && peptideInfo.residues) {
-            pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.3 } });
+        if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
+            // Фон - приглушенный сине-серый
+            pdbViewer.setStyle({}, { cartoon: { color: 0x7a8b9e, opacity: 0.5 } });
+            
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
@@ -820,45 +842,73 @@ function setRepresentation(type) {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
         
-        // Сферы
+        // Сферы на атомах серы
         for (var i = 0; i < peptideBonds.length; i++) {
-            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom1.x, y:peptideBonds[i].atom1.y, z:peptideBonds[i].atom1.z}, radius: 0.4, color: 0xffcc00 });
-            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom2.x, y:peptideBonds[i].atom2.y, z:peptideBonds[i].atom2.z}, radius: 0.4, color: 0xffcc00 });
+            var bond = peptideBonds[i];
+            pdbViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.4, color: 0xffcc00 });
+            pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.4, color: 0xffcc00 });
         }
-    } else {
-        if (peptideInfo && peptideInfo.residues) {
-            pdbViewer.setStyle({}, { stick: { color: 0xcccccc, radius: 0.08 }, sphere: { color: 0xcccccc, scale: 0.15 } });
+        
+        pdbViewer.zoomTo();
+        
+        setTimeout(function() {
+            for (var i = 0; i < peptideBonds.length; i++) {
+                var b = peptideBonds[i];
+                pdbViewer.addArrow({
+                    start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                    end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+                    radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+                });
+            }
+            pdbViewer.render();
+        }, 100);
+        
+    } else if (type === 'ballAndStick') {
+        if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
+            // Фон - приглушенный сине-серый (контрастнее)
+            pdbViewer.setStyle({}, { 
+                stick: { color: 0x7a8b9e, radius: 0.06 },
+                sphere: { color: 0x7a8b9e, scale: 0.12 }
+            });
+            
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
                     { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
-                    { stick: { color: color, radius: 0.12 }, sphere: { color: color, scale: 0.25 } }
+                    { 
+                        stick: { color: color, radius: 0.12 }, 
+                        sphere: { color: color, scale: 0.25 } 
+                    }
                 );
             }
         } else {
-            pdbViewer.setStyle({}, { stick: { colorscheme: 'elem', radius: 0.12 }, sphere: { colorscheme: 'elem', scale: 0.25 } });
-        }
-        
-        for (var i = 0; i < peptideBonds.length; i++) {
-            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom1.x, y:peptideBonds[i].atom1.y, z:peptideBonds[i].atom1.z}, radius: 0.5, color: 0xffcc00 });
-            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom2.x, y:peptideBonds[i].atom2.y, z:peptideBonds[i].atom2.z}, radius: 0.5, color: 0xffcc00 });
-        }
-    }
-    
-    pdbViewer.zoomTo();
-    
-    // Стрелки между атомами
-    setTimeout(function() {
-        for (var i = 0; i < peptideBonds.length; i++) {
-            var b = peptideBonds[i];
-            pdbViewer.addArrow({
-                start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
-                end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
-                radius: 0.1, radiusRatio: 1.0, color: 0xff8800
+            pdbViewer.setStyle({}, { 
+                stick: { colorscheme: 'elem', radius: 0.12 }, 
+                sphere: { colorscheme: 'elem', scale: 0.25 } 
             });
         }
-        pdbViewer.render();
-    }, 100);
+        
+        // Сферы на атомах серы
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
+            pdbViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.5, color: 0xffcc00 });
+            pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.5, color: 0xffcc00 });
+        }
+        
+        pdbViewer.zoomTo();
+        
+        setTimeout(function() {
+            for (var i = 0; i < peptideBonds.length; i++) {
+                var b = peptideBonds[i];
+                pdbViewer.addArrow({
+                    start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                    end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+                    radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+                });
+            }
+            pdbViewer.render();
+        }, 100);
+    }
     
     var cb = document.getElementById('btn-cartoon');
     var bb = document.getElementById('btn-ballstick');
