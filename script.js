@@ -717,6 +717,8 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
+console.log('3Dmol viewer created:', pdbViewer);
+console.log('setClickable exists:', typeof pdbViewer.setClickable);
     pdbViewer.addModel(pdbContent, 'pdb');
     
     // Раскраска
@@ -755,26 +757,16 @@ setTimeout(function() {
     pdbViewer.render();
 }, 100);
 
-// КЛИК ПО АТОМУ — показывает всплывашку
-pdbViewer.setClickable({}, true, function(atom, viewer, event, container) {
-    if (!atom) return;
-    
-    var fullName = getFullResidueName(atom.resn);
-    var text = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
-    
-    // Создаём простой div на месте клика
-    var popup = document.createElement('div');
-    popup.textContent = text;
-    popup.style.cssText = 'position:fixed; background:#2c5282; color:white; padding:8px 12px; border-radius:6px; font-size:13px; z-index:99999; pointer-events:none; box-shadow:0 2px 10px rgba(0,0,0,0.3);';
-    popup.style.left = (event.clientX + 15) + 'px';
-    popup.style.top = (event.clientY - 10) + 'px';
-    document.body.appendChild(popup);
-    
-    // Удаляем через 2 секунды
-    setTimeout(function() {
-        if (popup.parentNode) popup.parentNode.removeChild(popup);
-    }, 2000);
-});
+// ПРОСТОЙ ТЕСТ — клик по любому месту структуры
+try {
+    pdbViewer.setClickable({}, true, function(atom) {
+        console.log('CLICKED!', atom);
+        alert('Clicked on: ' + (atom ? (atom.resn + ' ' + atom.resi + ' chain ' + atom.chain) : 'nothing'));
+    });
+    console.log('setClickable installed successfully');
+} catch(e) {
+    console.error('setClickable error:', e);
+}
     
     // Стрелки между атомами серы
     setTimeout(function() {
