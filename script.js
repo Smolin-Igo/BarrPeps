@@ -834,14 +834,12 @@ function setRepresentation(type) {
         for (var i = 0; i < peptideBonds.length; i++) {
             var bond = peptideBonds[i];
             try {
-                pdbViewer.addCylinder({
-                    start: { x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z },
-                    end: { x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z },
-                    radius: 0.12,
-                    color: 0xff8800,
-                    fromCap: 1,
-                    toCap: 1
-                });
+                pdbViewer.addLine({
+    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
+    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+    color: 0xff8800,
+    linewidth: 5
+});
             } catch(e) {}
         }
     } else if (type === 'ballAndStick') {
