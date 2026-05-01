@@ -1254,9 +1254,12 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
     var dc=document.getElementById('peptideDetail');
     if(dc) dc.innerHTML=html;
     
-    if(hasPDB&&validStructures.length>0){
-        setTimeout(function(){renderPDBStructure(validStructures[0].content,validStructures[0].id,peptide.sequence_clean,peptide.disulfide_bonds);},100);
-    }
+    if (hasPDB && validStructures.length > 0) {
+    setTimeout(function() {
+        renderPDBStructure(validStructures[0].content, validStructures[0].id, peptide.sequence_clean, peptide.disulfide_bonds);
+        window.pdbContainer = document.getElementById('structure-viewer-pdb');
+    }, 100);
+}
 }
 
 // ========== EXPORTS ==========
@@ -1277,6 +1280,9 @@ window.toggleSourceDropdown=toggleSourceDropdown;
 window.updateSourceSelectionAndFilter=updateSourceSelectionAndFilter;
 window.showUnderConstruction=showUnderConstruction;
 window.closeModal=closeModal;
+// Экспортируем функцию полноэкранного режима
+window.toggleFullscreenPDB = toggleFullscreenPDB;
+window.pdbContainer = null;
 
 document.addEventListener('DOMContentLoaded',function(){
     if(typeof XLSX!=='undefined') loadExcelFile();
