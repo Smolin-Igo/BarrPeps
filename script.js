@@ -662,19 +662,48 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         }
     }
     
-    // Фильтруем связи только для пептида
-    var peptideBonds = [];
-    if (peptideInfo && ssbonds.length > 0) {
-        for (var i = 0; i < ssbonds.length; i++) {
-            var bond = ssbonds[i];
-            var inPeptide1 = (bond.chain1 === peptideInfo.chain && 
-                              bond.res1 >= peptideInfo.startRes && 
-                              bond.res1 <= peptideInfo.endRes);
-            var inPeptide2 = (bond.chain2 === peptideInfo.chain && 
-                              bond.res2 >= peptideInfo.startRes && 
-                              bond.res2 <= peptideInfo.endRes);
+    // Фильтруем связи - ТОЛЬКО те, что указаны в БД И принадлежат пептиду
+var peptideBonds = [];
+var usedPairs = {};
+
+if (peptideInfo && ssbonds.length > 0) {
+    for (var i = 0; i < ssbonds.length; i++) {
+        var bond = ssbonds[i];
+        var inPeptide1 = (bond.chain1 === peptideInfo.chain && 
+                          bond.res1 >= peptideInfo.startRes && 
+                          bond.res1 <= peptideInfo.endRes);
+        var inPeptide2 = (bond.chain2 === peptideInfo.chain && 
+                          bond.res2 >= peptideInfo.startRes && 
+                          bond.res2 <= peptideInfo.endRes);
+        
+        if (inPeptide1 && inPeptide2) {
+            var pairKey = Math.min(bond.res1, bond.res2) + '_' + Math.max(bond.res1, bond.res2);
             
-            if (inPeptide1 && inPeptide2) {
+            // Проверяем, есть ли эта связь в БД
+            var inDB = false;
+            if (disulfideBondsFromDB && disulfideBondsFromDB.length > 0) {
+                for (var d = 0; d < disulfideBondsFromDB.length; d++) {
+                    var dbBond = disulfideBondsFromDB[d];
+                    var dbRes1 = parseInt(dbBond.cys1) || 0;
+                    var dbRes2 = parseInt(dbBond.cys2) || 0;
+                    var dbPairKey = Math.min(dbRes1, dbRes2) + '_' + Math.max(dbRes1, dbRes2);
+                    
+                    if (pairKey === dbPairKey) {
+                        inDB = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Если связи нет в БД - пропускаем (это может быть связь из другой структуры)
+            if (!inDB) {
+                console.log('Skipped bond not in DB: Cys' + bond.res1 + '-Cys' + bond.res2);
+                continue;
+            }
+            
+            if (!usedPairs[pairKey]) {
+                usedPairs[pairKey] = true;
+                
                 var key1 = bond.chain1 + '_' + bond.res1;
                 var key2 = bond.chain2 + '_' + bond.res2;
                 if (allSGAtoms[key1] && allSGAtoms[key2]) {
@@ -684,16 +713,20 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
                         chain1: bond.chain1, res1: bond.res1,
                         chain2: bond.chain2, res2: bond.res2
                     });
+                    console.log('Added bond: Cys' + bond.res1 + ' - Cys' + bond.res2);
                 }
             }
         }
     }
+}
+    
+    console.log('Total unique bonds for peptide:', peptideBonds.length);
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
     pdbViewer.addModel(pdbContent, 'pdb');
     
-    // Применяем стили ДО zoomTo
+    // Стили
     if (peptideInfo && peptideInfo.residues) {
         pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.3 } });
         for (var i = 0; i < peptideInfo.residues.length; i++) {
@@ -707,53 +740,29 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
     }
     
-    // СФЕРЫ НА АТОМАХ СЕРЫ - используем line (не sphere!) для точного позиционирования
+    // Сферы на атомах серы
     for (var i = 0; i < peptideBonds.length; i++) {
         var bond = peptideBonds[i];
-        
-        // Вместо addStyle используем addSphere для точных координат
         pdbViewer.addSphere({
             center: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-            radius: 0.4,
-            color: 0xffcc00,
-            opacity: 1.0
+            radius: 0.4, color: 0xffcc00, opacity: 1.0
         });
         pdbViewer.addSphere({
             center: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-            radius: 0.4,
-            color: 0xffcc00,
-            opacity: 1.0
+            radius: 0.4, color: 0xffcc00, opacity: 1.0
         });
     }
     
     pdbViewer.zoomTo();
     
-    // ЦИЛИНДРЫ - используем addCylinder ПОСЛЕ zoomTo
-    // КЛЮЧЕВОЕ: передаем fromCap и toCap как false для точных координат
+    // Стрелки-цилиндры между атомами серы
     setTimeout(function() {
         for (var i = 0; i < peptideBonds.length; i++) {
             var bond = peptideBonds[i];
-            
-            var midX = (bond.atom1.x + bond.atom2.x) / 2;
-            var midY = (bond.atom1.y + bond.atom2.y) / 2;
-            var midZ = (bond.atom1.z + bond.atom2.z) / 2;
-            
-            var dx = bond.atom2.x - bond.atom1.x;
-            var dy = bond.atom2.y - bond.atom1.y;
-            var dz = bond.atom2.z - bond.atom1.z;
-            var dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            
-            // Нормализуем направление
-            dx /= dist; dy /= dist; dz /= dist;
-            
-            // Используем addArrow для точного позиционирования
             pdbViewer.addArrow({
                 start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
                 end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-                radius: 0.12,
-                radiusRatio: 1.0,
-                color: 0xff8800,
-                alpha: 0.9
+                radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
             });
         }
         pdbViewer.render();
@@ -762,7 +771,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
-    // Создаем кнопки если их нет
+    // Кнопки
     setTimeout(function() {
         if (!document.getElementById('btn-cartoon')) {
             var cc = document.createElement('div');
