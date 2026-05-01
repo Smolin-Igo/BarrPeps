@@ -638,13 +638,10 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     var container = document.getElementById('structure-viewer-pdb');
     if (!container || !pdbContent) return;
     
-    // Находим пептид
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
-    
-    // Получаем SSBOND записи из PDB
     var ssbonds = parseSSBOND(pdbContent);
     
-    // Находим все SG атомы - ВАЖНО: используем точные координаты из PDB
+    // Собираем SG атомы
     var allSGAtoms = {};
     var lines = pdbContent.split('\n');
     for (var i = 0; i < lines.length; i++) {
@@ -665,35 +662,27 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         }
     }
     
-    // Фильтруем - только связи на пептиде
+    // Фильтруем связи только для пептида
     var peptideBonds = [];
-    
     if (peptideInfo && ssbonds.length > 0) {
         for (var i = 0; i < ssbonds.length; i++) {
             var bond = ssbonds[i];
+            var inPeptide1 = (bond.chain1 === peptideInfo.chain && 
+                              bond.res1 >= peptideInfo.startRes && 
+                              bond.res1 <= peptideInfo.endRes);
+            var inPeptide2 = (bond.chain2 === peptideInfo.chain && 
+                              bond.res2 >= peptideInfo.startRes && 
+                              bond.res2 <= peptideInfo.endRes);
             
-            var res1InPeptide = (bond.chain1 === peptideInfo.chain && 
-                                bond.res1 >= peptideInfo.startRes && 
-                                bond.res1 <= peptideInfo.endRes);
-            var res2InPeptide = (bond.chain2 === peptideInfo.chain && 
-                                bond.res2 >= peptideInfo.startRes && 
-                                bond.res2 <= peptideInfo.endRes);
-            
-            if (res1InPeptide && res2InPeptide) {
+            if (inPeptide1 && inPeptide2) {
                 var key1 = bond.chain1 + '_' + bond.res1;
                 var key2 = bond.chain2 + '_' + bond.res2;
-                var atom1 = allSGAtoms[key1];
-                var atom2 = allSGAtoms[key2];
-                
-                if (atom1 && atom2) {
+                if (allSGAtoms[key1] && allSGAtoms[key2]) {
                     peptideBonds.push({
-                        atom1: atom1,
-                        atom2: atom2,
-                        label: 'Cys' + bond.res1 + '-Cys' + bond.res2,
-                        chain1: bond.chain1,
-                        res1: bond.res1,
-                        chain2: bond.chain2,
-                        res2: bond.res2
+                        atom1: allSGAtoms[key1],
+                        atom2: allSGAtoms[key2],
+                        chain1: bond.chain1, res1: bond.res1,
+                        chain2: bond.chain2, res2: bond.res2
                     });
                 }
             }
@@ -702,13 +691,11 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
-    
-    // Добавляем модель КАК ЕСТЬ, без изменений координат
     pdbViewer.addModel(pdbContent, 'pdb');
-    pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.3 } });
     
-    // Rainbow для пептида
+    // Применяем стили ДО zoomTo
     if (peptideInfo && peptideInfo.residues) {
+        pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.3 } });
         for (var i = 0; i < peptideInfo.residues.length; i++) {
             var color = getRainbowColor(i, peptideInfo.residues.length);
             pdbViewer.addStyle(
@@ -716,76 +703,75 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
                 { cartoon: { color: color, opacity: 0.95 } }
             );
         }
+    } else {
+        pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
     }
     
-    // Подсвечиваем серу и добавляем связи ДО zoomTo
+    // СФЕРЫ НА АТОМАХ СЕРЫ - используем line (не sphere!) для точного позиционирования
     for (var i = 0; i < peptideBonds.length; i++) {
         var bond = peptideBonds[i];
         
-        // Желтые сферы на атомах серы
-        pdbViewer.addStyle(
-            { chain: bond.chain1, resi: bond.res1, atom: 'SG' },
-            { sphere: { color: 0xffcc00, radius: 0.5, scale: 1.0, opacity: 1.0 } }
-        );
-        pdbViewer.addStyle(
-            { chain: bond.chain2, resi: bond.res2, atom: 'SG' },
-            { sphere: { color: 0xffcc00, radius: 0.5, scale: 1.0, opacity: 1.0 } }
-        );
+        // Вместо addStyle используем addSphere для точных координат
+        pdbViewer.addSphere({
+            center: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
+            radius: 0.4,
+            color: 0xffcc00,
+            opacity: 1.0
+        });
+        pdbViewer.addSphere({
+            center: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+            radius: 0.4,
+            color: 0xffcc00,
+            opacity: 1.0
+        });
     }
     
     pdbViewer.zoomTo();
     
-    // Добавляем цилиндры ПОСЛЕ zoomTo, используя addDistance (правильный метод 3Dmol)
-    for (var i = 0; i < peptideBonds.length; i++) {
-        var bond = peptideBonds[i];
-        
-        // Используем addResLabels для создания связи
-        // или создаем линию напрямую через Shape
-        try {
-            // Метод 1: используем addLine (новый API)
-            if (typeof pdbViewer.addLine === 'function') {
-                pdbViewer.addLine({
-                    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-                    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-                    color: 0xff8800,
-                    linewidth: 3
-                });
-            } else {
-                // Метод 2: кастомный cylinder
-                pdbViewer.addCylinder({
-                    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-                    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-                    radius: 0.15,
-                    color: 0xff8800,
-                    fromCap: true,
-                    toCap: true,
-                    dashed: false
-                });
-            }
-        } catch(e) {
-            console.log('Error adding bond:', e);
+    // ЦИЛИНДРЫ - используем addCylinder ПОСЛЕ zoomTo
+    // КЛЮЧЕВОЕ: передаем fromCap и toCap как false для точных координат
+    setTimeout(function() {
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var bond = peptideBonds[i];
+            
+            var midX = (bond.atom1.x + bond.atom2.x) / 2;
+            var midY = (bond.atom1.y + bond.atom2.y) / 2;
+            var midZ = (bond.atom1.z + bond.atom2.z) / 2;
+            
+            var dx = bond.atom2.x - bond.atom1.x;
+            var dy = bond.atom2.y - bond.atom1.y;
+            var dz = bond.atom2.z - bond.atom1.z;
+            var dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            // Нормализуем направление
+            dx /= dist; dy /= dist; dz /= dist;
+            
+            // Используем addArrow для точного позиционирования
+            pdbViewer.addArrow({
+                start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
+                end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
+                radius: 0.12,
+                radiusRatio: 1.0,
+                color: 0xff8800,
+                alpha: 0.9
+            });
         }
-    }
-    
-    pdbViewer.render();
+        pdbViewer.render();
+    }, 100);
     
     window.pdbContentCache = pdbContent;
-    window.currentPdbInfo = {
-        peptideInfo: peptideInfo,
-        peptideBonds: peptideBonds
-    };
-    window.currentRepresentation = 'cartoon';
+    window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
-    // Убираем старые кнопки если есть
-    var cc = document.getElementById('structure-controls-custom');
-    if (!cc) {
-        cc = document.createElement('div');
-        cc.id = 'structure-controls-custom';
-        cc.className = 'structure-controls';
-        cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
-                       '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
-        container.parentNode.insertBefore(cc, container.nextSibling);
-    }
+    // Создаем кнопки если их нет
+    setTimeout(function() {
+        if (!document.getElementById('btn-cartoon')) {
+            var cc = document.createElement('div');
+            cc.className = 'structure-controls';
+            cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
+                           '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
+            container.parentNode.appendChild(cc);
+        }
+    }, 50);
 }
 
 function setRepresentation(type) {
@@ -798,12 +784,10 @@ function setRepresentation(type) {
     var peptideInfo = info.peptideInfo;
     var peptideBonds = info.peptideBonds || [];
     
+    // Стили
     if (type === 'cartoon') {
         if (peptideInfo && peptideInfo.residues) {
-            // Серый фон
-            pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.4 } });
-            
-            // Rainbow пептид
+            pdbViewer.setStyle({}, { cartoon: { color: 0xcccccc, opacity: 0.3 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
@@ -815,34 +799,12 @@ function setRepresentation(type) {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
         
-        // Подсвечиваем серу в цистеинах с дисульфидными связями
+        // Сферы
         for (var i = 0; i < peptideBonds.length; i++) {
-            var bond = peptideBonds[i];
-            pdbViewer.addStyle(
-                { chain: bond.cys1.chain, resi: bond.cys1.resSeq, atom: 'SG' },
-                { sphere: { color: 0xffcc00, scale: 0.3, opacity: 1.0 } }
-            );
-            pdbViewer.addStyle(
-                { chain: bond.cys2.chain, resi: bond.cys2.resSeq, atom: 'SG' },
-                { sphere: { color: 0xffcc00, scale: 0.3, opacity: 1.0 } }
-            );
+            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom1.x, y:peptideBonds[i].atom1.y, z:peptideBonds[i].atom1.z}, radius: 0.4, color: 0xffcc00 });
+            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom2.x, y:peptideBonds[i].atom2.y, z:peptideBonds[i].atom2.z}, radius: 0.4, color: 0xffcc00 });
         }
-        
-        pdbViewer.removeAllShapes();
-        
-        // Добавляем цилиндры ТОЧНО между атомами серы
-        for (var i = 0; i < peptideBonds.length; i++) {
-            var bond = peptideBonds[i];
-            try {
-                pdbViewer.addLine({
-    start: { x: bond.atom1.x, y: bond.atom1.y, z: bond.atom1.z },
-    end: { x: bond.atom2.x, y: bond.atom2.y, z: bond.atom2.z },
-    color: 0xff8800,
-    linewidth: 5
-});
-            } catch(e) {}
-        }
-    } else if (type === 'ballAndStick') {
+    } else {
         if (peptideInfo && peptideInfo.residues) {
             pdbViewer.setStyle({}, { stick: { color: 0xcccccc, radius: 0.08 }, sphere: { color: 0xcccccc, scale: 0.15 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
@@ -857,36 +819,25 @@ function setRepresentation(type) {
         }
         
         for (var i = 0; i < peptideBonds.length; i++) {
-            var bond = peptideBonds[i];
-            pdbViewer.addStyle(
-                { chain: bond.cys1.chain, resi: bond.cys1.resSeq, atom: 'SG' },
-                { sphere: { color: 0xffcc00, scale: 0.35, opacity: 1.0 } }
-            );
-            pdbViewer.addStyle(
-                { chain: bond.cys2.chain, resi: bond.cys2.resSeq, atom: 'SG' },
-                { sphere: { color: 0xffcc00, scale: 0.35, opacity: 1.0 } }
-            );
-        }
-        
-        pdbViewer.removeAllShapes();
-        
-        for (var i = 0; i < peptideBonds.length; i++) {
-            var bond = peptideBonds[i];
-            try {
-                pdbViewer.addCylinder({
-                    start: { x: bond.cys1.x, y: bond.cys1.y, z: bond.cys1.z },
-                    end: { x: bond.cys2.x, y: bond.cys2.y, z: bond.cys2.z },
-                    radius: 0.15,
-                    color: 0xff8800,
-                    fromCap: 1,
-                    toCap: 1
-                });
-            } catch(e) {}
+            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom1.x, y:peptideBonds[i].atom1.y, z:peptideBonds[i].atom1.z}, radius: 0.5, color: 0xffcc00 });
+            pdbViewer.addSphere({ center: {x:peptideBonds[i].atom2.x, y:peptideBonds[i].atom2.y, z:peptideBonds[i].atom2.z}, radius: 0.5, color: 0xffcc00 });
         }
     }
     
     pdbViewer.zoomTo();
-    pdbViewer.render();
+    
+    // Стрелки между атомами
+    setTimeout(function() {
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var b = peptideBonds[i];
+            pdbViewer.addArrow({
+                start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+                radius: 0.1, radiusRatio: 1.0, color: 0xff8800
+            });
+        }
+        pdbViewer.render();
+    }, 100);
     
     var cb = document.getElementById('btn-cartoon');
     var bb = document.getElementById('btn-ballstick');
