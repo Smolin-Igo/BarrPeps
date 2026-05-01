@@ -679,24 +679,50 @@ function toggleFullscreenPDB() {
     var isFullscreen = container.classList.contains('fullscreen-pdb');
     
     if (!isFullscreen) {
+        // Запоминаем родителей
+        container._originalParent = container.parentNode;
+        container._originalNextSibling = container.nextSibling;
+        
+        // Перемещаем в body
+        document.body.appendChild(container);
         container.classList.add('fullscreen-pdb');
+        
         var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = 'Exit Fullscreen';
+        if (btn) btn.textContent = '✕ Exit';
+        
+        // Кнопка закрытия
+        var closeBtn = document.createElement('button');
+        closeBtn.id = 'closeFullscreenPdb';
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = 'position:fixed; top:15px; right:15px; z-index:99999; background:#e53e3e; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+        closeBtn.onclick = toggleFullscreenPDB;
+        container.appendChild(closeBtn);
+        
     } else {
+        // Убираем кнопку
+        var closeBtn = document.getElementById('closeFullscreenPdb');
+        if (closeBtn) closeBtn.remove();
+        
+        // Возвращаем на место
+        if (container._originalParent && container._originalNextSibling) {
+            container._originalParent.insertBefore(container, container._originalNextSibling);
+        } else if (container._originalParent) {
+            container._originalParent.appendChild(container);
+        }
         container.classList.remove('fullscreen-pdb');
+        
         var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = 'Fullscreen';
+        if (btn) btn.textContent = '⛶ Fullscreen';
     }
     
-    // Перерисовываем структуру
-    if (window.pdbContentCache) {
-        renderPDBStructure(
-            window.pdbContentCache, 
-            document.getElementById('currentPdbId')?.textContent || '', 
-            window.currentPeptideSequence || '', 
-            window.currentDisulfideBonds || []
-        );
-    }
+    // Не пересоздаём viewer — он сам подстроится
+    setTimeout(function() {
+        if (pdbViewer) {
+            pdbViewer.resize();
+            pdbViewer.zoomTo();
+            pdbViewer.render();
+        }
+    }, 200);
 }
 
 function setRepresentation(type) {
