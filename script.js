@@ -516,10 +516,15 @@ function parseSSBOND(pdbContent) {
         var line = lines[i];
         if (line.startsWith('SSBOND')) {
             // SSBOND   1 CYS A    6    CYS A   11
+            // Иногда цепь может быть пробелом
             var chain1 = line.substring(15, 16).trim();
             var res1 = parseInt(line.substring(17, 21).trim());
             var chain2 = line.substring(29, 30).trim();
             var res2 = parseInt(line.substring(31, 35).trim());
+            
+            // Если цепь пустая (пробел), используем ' ' или первую найденную цепь
+            if (!chain1) chain1 = ' ';
+            if (!chain2) chain2 = ' ';
             
             bonds.push({
                 chain1: chain1,
@@ -527,10 +532,12 @@ function parseSSBOND(pdbContent) {
                 chain2: chain2,
                 res2: res2
             });
+            
+            console.log('SSBOND: Cys' + chain1 + '_' + res1 + ' - Cys' + chain2 + '_' + res2);
         }
     }
     
-    console.log('SSBOND records found:', bonds.length);
+    console.log('Total SSBOND records:', bonds.length);
     return bonds;
 }
 
@@ -574,11 +581,14 @@ function findPeptideChain(pdbContent, peptideSequence) {
         var line = lines[i];
         if (line.startsWith('ATOM') && line.substring(13, 16).trim() === 'CA') {
             var chainId = line.substring(21, 22).trim();
+            // Если цепь пустая, используем ' ' или 'A' по умолчанию
+            if (!chainId) chainId = ' ';
+            
             var resName = line.substring(17, 20).trim();
             var resSeq = parseInt(line.substring(22, 26).trim());
             
             if (currentChain !== chainId) {
-                if (currentChain && chainSeq) {
+                if (currentChain !== null && chainSeq) {
                     if (!chains[currentChain]) chains[currentChain] = { seq: '', residues: [] };
                     chains[currentChain].seq = chainSeq;
                 }
@@ -594,9 +604,14 @@ function findPeptideChain(pdbContent, peptideSequence) {
             }
         }
     }
-    if (currentChain && chainSeq) {
+    if (currentChain !== null && chainSeq) {
         if (!chains[currentChain]) chains[currentChain] = { seq: '', residues: [] };
         chains[currentChain].seq = chainSeq;
+    }
+    
+    console.log('Found chains:', Object.keys(chains));
+    for (var c in chains) {
+        console.log('Chain ' + c + ' length:', chains[c].seq.length, 'starts at:', chains[c].residues[0]?.resSeq, 'ends at:', chains[c].residues[chains[c].residues.length-1]?.resSeq);
     }
     
     var target = peptideSequence.toUpperCase();
@@ -605,6 +620,7 @@ function findPeptideChain(pdbContent, peptideSequence) {
     for (var chain in chains) {
         var idx = chains[chain].seq.indexOf(target);
         if (idx !== -1) {
+            console.log('Found peptide in chain:', chain, 'at index:', idx);
             return {
                 chain: chain,
                 residues: chains[chain].residues.slice(idx, idx + target.length),
@@ -623,6 +639,7 @@ function findPeptideChain(pdbContent, peptideSequence) {
     }
     
     if (bestChain) {
+        console.log('Using best chain:', bestChain, 'length:', chains[bestChain].seq.length);
         return {
             chain: bestChain,
             residues: chains[bestChain].residues,
@@ -662,21 +679,26 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         }
     }
     
-    // Фильтруем связи - ТОЛЬКО те, что указаны в БД И принадлежат пептиду
+ // Фильтруем связи - ТОЛЬКО те, что в БД, на пептиде, и в ТОЙ ЖЕ ЦЕПИ
 var peptideBonds = [];
 var usedPairs = {};
 
 if (peptideInfo && ssbonds.length > 0) {
+    console.log('Peptide chain:', peptideInfo.chain, 'range:', peptideInfo.startRes, '-', peptideInfo.endRes);
+    
     for (var i = 0; i < ssbonds.length; i++) {
         var bond = ssbonds[i];
-        var inPeptide1 = (bond.chain1 === peptideInfo.chain && 
-                          bond.res1 >= peptideInfo.startRes && 
-                          bond.res1 <= peptideInfo.endRes);
-        var inPeptide2 = (bond.chain2 === peptideInfo.chain && 
-                          bond.res2 >= peptideInfo.startRes && 
-                          bond.res2 <= peptideInfo.endRes);
         
-        if (inPeptide1 && inPeptide2) {
+        // Сравниваем цепи (учитывая что ' ' === ' ')
+        var chain1Match = (bond.chain1 === peptideInfo.chain);
+        var chain2Match = (bond.chain2 === peptideInfo.chain);
+        
+        var res1InRange = (bond.res1 >= peptideInfo.startRes && bond.res1 <= peptideInfo.endRes);
+        var res2InRange = (bond.res2 >= peptideInfo.startRes && bond.res2 <= peptideInfo.endRes);
+        
+        console.log('Bond Cys' + bond.res1 + '(' + bond.chain1 + ')-Cys' + bond.res2 + '(' + bond.chain2 + '): chain1Match=' + chain1Match + ' chain2Match=' + chain2Match + ' res1InRange=' + res1InRange + ' res2InRange=' + res2InRange);
+        
+        if (chain1Match && chain2Match && res1InRange && res2InRange) {
             var pairKey = Math.min(bond.res1, bond.res2) + '_' + Math.max(bond.res1, bond.res2);
             
             // Проверяем, есть ли эта связь в БД
@@ -695,9 +717,8 @@ if (peptideInfo && ssbonds.length > 0) {
                 }
             }
             
-            // Если связи нет в БД - пропускаем (это может быть связь из другой структуры)
             if (!inDB) {
-                console.log('Skipped bond not in DB: Cys' + bond.res1 + '-Cys' + bond.res2);
+                console.log('Skipped bond not in DB: Cys' + bond.res1 + '-Cys' + bond.res2 + ' (chain ' + bond.chain1 + ')');
                 continue;
             }
             
@@ -706,16 +727,25 @@ if (peptideInfo && ssbonds.length > 0) {
                 
                 var key1 = bond.chain1 + '_' + bond.res1;
                 var key2 = bond.chain2 + '_' + bond.res2;
-                if (allSGAtoms[key1] && allSGAtoms[key2]) {
+                
+                // ДОПОЛНИТЕЛЬНАЯ проверка: атомы должны быть в той же цепи что и пептид
+                var atom1 = allSGAtoms[key1];
+                var atom2 = allSGAtoms[key2];
+                
+                if (atom1 && atom2 && atom1.chain === peptideInfo.chain && atom2.chain === peptideInfo.chain) {
                     peptideBonds.push({
-                        atom1: allSGAtoms[key1],
-                        atom2: allSGAtoms[key2],
+                        atom1: atom1,
+                        atom2: atom2,
                         chain1: bond.chain1, res1: bond.res1,
                         chain2: bond.chain2, res2: bond.res2
                     });
-                    console.log('Added bond: Cys' + bond.res1 + ' - Cys' + bond.res2);
+                    console.log('Added bond: Cys' + bond.res1 + '-Cys' + bond.res2 + ' (chain ' + bond.chain1 + ')');
+                } else {
+                    console.log('Skipped: atoms not in peptide chain. atom1 chain=' + (atom1?atom1.chain:'?') + ', atom2 chain=' + (atom2?atom2.chain:'?') + ', peptide chain=' + peptideInfo.chain);
                 }
             }
+        } else {
+            console.log('Skipped: bond not fully in peptide. chain1=' + bond.chain1 + ' vs ' + peptideInfo.chain + ', chain2=' + bond.chain2 + ' vs ' + peptideInfo.chain + ', res1 in range=' + res1InRange + ', res2 in range=' + res2InRange);
         }
     }
 }
