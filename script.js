@@ -23,6 +23,13 @@ let aaChart = null;
 var selectedMods = [];
 var selectedSources = [];
 
+window.addEventListener('resize', function() {
+    if (pdbViewer && document.getElementById('structure-viewer-pdb')) {
+        pdbViewer.resize();
+        pdbViewer.render();
+    }
+});
+
 function getPeptideUrl(peptideId, peptideName) {
     return 'peptide.html?id=' + peptideId + '&name=' + encodeURIComponent(peptideName);
 }
@@ -543,7 +550,12 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     container.innerHTML = '';
     
-    pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
+var rect = container.getBoundingClientRect();
+pdbViewer = $3Dmol.createViewer(container, { 
+    backgroundColor: 'white',
+    width: rect.width || container.clientWidth || 800,
+    height: rect.height || container.clientHeight || 400
+});
     pdbViewer.addModel(pdbContent, 'pdb');
     
     var peptideColors = [];
@@ -568,6 +580,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.4, color: 0xffcc00 });
     }
     
+    pdbViewer.resize();
     pdbViewer.zoomTo();
     
     setTimeout(function() {
@@ -665,107 +678,9 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         cc.className = 'structure-controls';
         cc.innerHTML = 
             '<button id="btn-cartoon" class="active" onclick="setRepresentation(\'cartoon\')">Cartoon</button>' +
-            '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>' +
-            '<button id="btn-fullscreen" onclick="toggleFullscreenPDB()" style="background:#48bb78;">⛶ Fullscreen</button>';
+            '<button id="btn-ballstick" onclick="setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
         container.parentNode.appendChild(cc);
     }, 50);
-}
-
-// Функция для полноэкранного режима
-function toggleFullscreenPDB() {
-    var modal = document.getElementById('fullscreenModal');
-    var viewerDiv = document.getElementById('fullscreenViewer');
-    
-    if (!modal || !viewerDiv) return;
-    
-    var isVisible = modal.style.display === 'flex';
-    
-    if (!isVisible) {
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        
-        var pdbId = document.getElementById('currentPdbId')?.textContent || '';
-        document.getElementById('fullscreenTitle').textContent = '3D Structure - ' + pdbId;
-        
-        // Даём время на отрисовку модального окна, затем создаём viewer
-        setTimeout(function() {
-            viewerDiv.innerHTML = '';
-            
-            var viewerWidth = viewerDiv.clientWidth;
-            var viewerHeight = viewerDiv.clientHeight;
-            
-            console.log('Fullscreen viewer size:', viewerWidth, 'x', viewerHeight);
-            
-            var fullViewer = $3Dmol.createViewer(viewerDiv, { 
-                backgroundColor: 'white',
-                width: viewerWidth || 800,
-                height: viewerHeight || 600
-            });
-            fullViewer.addModel(window.pdbContentCache, 'pdb');
-            
-            var info = window.currentPdbInfo || {};
-            var peptideInfo = info.peptideInfo;
-            var peptideBonds = info.peptideBonds || [];
-            
-            if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
-                fullViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
-                for (var i = 0; i < peptideInfo.residues.length; i++) {
-                    var color = getRainbowColor(i, peptideInfo.residues.length);
-                    fullViewer.addStyle(
-                        { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
-                        { cartoon: { color: color, opacity: 0.95 } }
-                    );
-                }
-            } else {
-                fullViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
-            }
-            
-            for (var i = 0; i < peptideBonds.length; i++) {
-                var bond = peptideBonds[i];
-                fullViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.5, color: 0xffcc00 });
-                fullViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.5, color: 0xffcc00 });
-            }
-            
-            fullViewer.zoomTo();
-            
-            setTimeout(function() {
-                for (var i = 0; i < peptideBonds.length; i++) {
-                    var b = peptideBonds[i];
-                    fullViewer.addArrow({
-                        start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
-                        end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
-                        radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-                    });
-                }
-                fullViewer.render();
-            }, 100);
-            
-            // Кнопки управления внутри модального окна
-            var controlsDiv = document.createElement('div');
-            controlsDiv.style.cssText = 'position:absolute; bottom:15px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:100000;';
-            controlsDiv.innerHTML = 
-                '<button onclick="window.fullscreenViewer.setStyle({},{cartoon:{colorscheme:\'ss\'}}); window.fullscreenViewer.zoomTo(); window.fullscreenViewer.render();" style="background:#4299e1;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">Cartoon</button>' +
-                '<button onclick="window.fullscreenViewer.setStyle({},{stick:{colorscheme:\'elem\'},sphere:{colorscheme:\'elem\'}}); window.fullscreenViewer.zoomTo(); window.fullscreenViewer.render();" style="background:#4299e1;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">Ball & Stick</button>';
-            viewerDiv.parentNode.appendChild(controlsDiv);
-            
-            window.fullscreenViewer = fullViewer;
-            
-        }, 100);
-        
-    } else {
-        closeFullscreenModal();
-    }
-}
-
-function closeFullscreenModal() {
-    var modal = document.getElementById('fullscreenModal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }
-    var viewerDiv = document.getElementById('fullscreenViewer');
-    if (viewerDiv) viewerDiv.innerHTML = '';
-    window.fullscreenViewer = null;
 }
 
 function setRepresentation(type) {
