@@ -330,19 +330,17 @@ function parsePDBHeader(pdbContent) {
     var lines = pdbContent.split('\n');
     var header = {
         title: '',
-        moleculeChains: {},  // MOL_ID -> { molecule, chains: [] }
-        chainInfo: {}         // chain -> { molecule, organism }
+        moleculeChains: {},
+        chainInfo: {}
     };
     
     var currentMolId = null;
     var currentMolecule = null;
     var currentChains = [];
     
-    // Первый проход - собираем MOL_ID и молекулы
     for (var i = 0; i < Math.min(200, lines.length); i++) {
         var line = lines[i];
         
-        // TITLE
         if (line.startsWith('TITLE')) {
             var part = line.substring(10).trim();
             if (part && header.title.indexOf(part) === -1) {
@@ -350,14 +348,11 @@ function parsePDBHeader(pdbContent) {
             }
         }
         
-        // COMPND
         if (line.startsWith('COMPND')) {
             var text = line.substring(10).trim();
             
-            // MOL_ID
             var molIdMatch = text.match(/MOL_ID:\s*(\d+)/);
             if (molIdMatch) {
-                // Сохраняем предыдущий
                 if (currentMolId && currentMolecule) {
                     header.moleculeChains[currentMolId] = {
                         molecule: currentMolecule,
@@ -369,27 +364,18 @@ function parsePDBHeader(pdbContent) {
                 currentChains = [];
             }
             
-            // MOLECULE
-            var molMatch = text.match(/MOLECULE:\s*(.+?)\s*;?\s*$/);
+            var molMatch = text.match(/MOLECULE:\s*(.+?);?\s*$/);
             if (molMatch && currentMolId) {
                 currentMolecule = molMatch[1].trim();
             }
             
-            // CHAIN
             var chainMatch = text.match(/CHAIN:\s*([A-Za-z0-9, ]+);/);
             if (chainMatch && currentMolId) {
-                var chains = chainMatch[1].split(',').map(function(c) { return c.trim(); });
-                currentChains = chains;
+                currentChains = chainMatch[1].split(',').map(function(c) { return c.trim(); });
             }
-        }
-        
-        // KEYWDS
-        if (line.startsWith('KEYWDS')) {
-            header.keywords = (header.keywords || '') + ' ' + line.substring(10).trim();
         }
     }
     
-    // Сохраняем последний
     if (currentMolId && currentMolecule) {
         header.moleculeChains[currentMolId] = {
             molecule: currentMolecule,
@@ -397,19 +383,16 @@ function parsePDBHeader(pdbContent) {
         };
     }
     
-    // Второй проход - организмы по MOL_ID
     var srcMolId = null;
     for (var i = 0; i < Math.min(200, lines.length); i++) {
         var line = lines[i];
         if (line.startsWith('SOURCE')) {
             var text = line.substring(10).trim();
-            
             var molIdMatch = text.match(/MOL_ID:\s*(\d+)/);
             if (molIdMatch) {
                 srcMolId = molIdMatch[1];
             }
-            
-            if (text.startsWith('ORGANISM_SCIENTIFIC:') && srcMolId) {
+            if (text.indexOf('ORGANISM_SCIENTIFIC:') !== -1 && srcMolId) {
                 var org = text.replace('ORGANISM_SCIENTIFIC:', '').trim();
                 if (header.moleculeChains[srcMolId]) {
                     header.moleculeChains[srcMolId].organism = org;
@@ -418,16 +401,12 @@ function parsePDBHeader(pdbContent) {
         }
     }
     
-    // Строим chainInfo
     for (var molId in header.moleculeChains) {
         var mc = header.moleculeChains[molId];
-        var molName = mc.molecule || 'Unknown';
-        var organism = mc.organism || '';
-        
         mc.chains.forEach(function(chain) {
             header.chainInfo[chain] = {
-                molecule: molName,
-                organism: organism
+                molecule: mc.molecule || 'Unknown',
+                organism: mc.organism || ''
             };
         });
     }
@@ -446,34 +425,6 @@ function getChainDescription(chain, pdbHeader) {
         return desc;
     }
     return 'Chain ' + chain;
-}
-        // COMPND - компоненты (цепь и её описание)
-        if (line.startsWith('COMPND') && line.includes('CHAIN:')) {
-            var compndText = line.substring(10).trim();
-            // Извлекаем описание цепи
-            var chainMatch = compndText.match(/CHAIN:\s*([A-Za-z, ]+);\s*(.+)/);
-            if (chainMatch) {
-                var chainPart = chainMatch[2].trim();
-                if (!header.chainInfo) header.chainInfo = {};
-                var chains = chainMatch[1].split(',').map(function(c) { return c.trim(); });
-                chains.forEach(function(c) {
-                    if (!header.chainInfo[c]) header.chainInfo[c] = '';
-                    header.chainInfo[c] += (header.chainInfo[c] ? ', ' : '') + chainPart;
-                });
-            }
-        }
-    
-    // Убираем повторяющиеся слова в title
-    if (header.title) {
-        var words = header.title.split(/\s+/);
-        var unique = [];
-        for (var i = 0; i < words.length; i++) {
-            if (unique.indexOf(words[i]) === -1) unique.push(words[i]);
-        }
-        header.title = unique.join(' ');
-    }
-    
-    return header;
 }
 
 function convertThreeToOne(threeLetter) {
