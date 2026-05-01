@@ -581,7 +581,6 @@ function findPeptideChain(pdbContent, peptideSequence) {
         var line = lines[i];
         if (line.startsWith('ATOM') && line.substring(13, 16).trim() === 'CA') {
             var chainId = line.substring(21, 22).trim();
-            // Если цепь пустая, используем ' ' или 'A' по умолчанию
             if (!chainId) chainId = ' ';
             
             var resName = line.substring(17, 20).trim();
@@ -609,45 +608,24 @@ function findPeptideChain(pdbContent, peptideSequence) {
         chains[currentChain].seq = chainSeq;
     }
     
-    console.log('Found chains:', Object.keys(chains));
-    for (var c in chains) {
-        console.log('Chain ' + c + ' length:', chains[c].seq.length, 'starts at:', chains[c].residues[0]?.resSeq, 'ends at:', chains[c].residues[chains[c].residues.length-1]?.resSeq);
-    }
-    
     var target = peptideSequence.toUpperCase();
     
-    // Ищем точное совпадение
+    // ТОЛЬКО точное совпадение
     for (var chain in chains) {
         var idx = chains[chain].seq.indexOf(target);
         if (idx !== -1) {
-            console.log('Found peptide in chain:', chain, 'at index:', idx);
+            var residues = chains[chain].residues.slice(idx, idx + target.length);
+            console.log('Found peptide in chain ' + chain + ': ' + residues.length + ' residues');
             return {
                 chain: chain,
-                residues: chains[chain].residues.slice(idx, idx + target.length),
-                startRes: chains[chain].residues[idx].resSeq,
-                endRes: chains[chain].residues[idx + target.length - 1].resSeq
+                residues: residues,
+                startRes: residues[0].resSeq,
+                endRes: residues[residues.length - 1].resSeq
             };
         }
     }
     
-    // Если точного нет, ищем лучшую цепь по длине
-    var bestChain = null;
-    for (var chain in chains) {
-        if (!bestChain || chains[chain].seq.length > chains[bestChain].seq.length) {
-            bestChain = chain;
-        }
-    }
-    
-    if (bestChain) {
-        console.log('Using best chain:', bestChain, 'length:', chains[bestChain].seq.length);
-        return {
-            chain: bestChain,
-            residues: chains[bestChain].residues,
-            startRes: chains[bestChain].residues[0].resSeq,
-            endRes: chains[bestChain].residues[chains[bestChain].residues.length - 1].resSeq
-        };
-    }
-    
+    console.log('Exact peptide sequence not found in PDB');
     return null;
 }
 
@@ -656,6 +634,14 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     if (!container || !pdbContent) return;
     
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
+    // Проверяем, что нашли именно пептид, а не всю цепь
+if (peptideInfo && peptideSequence) {
+    var targetLen = peptideSequence.length;
+    if (peptideInfo.residues.length > targetLen * 1.5) {
+        console.log('WARNING: Found chain is much larger than peptide (' + peptideInfo.residues.length + ' vs ' + targetLen + '). Not highlighting.');
+        peptideInfo = null;
+    }
+}
     var ssbonds = parseSSBOND(pdbContent);
     
     // Собираем SG атомы
