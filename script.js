@@ -742,35 +742,38 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     pdbViewer.zoomTo();
 
-// Попытка добавить hover через setHoverable
-try {
-    pdbViewer.setHoverable({}, true, 
-        function(atom) {
-            if (atom) {
-                var tooltip = document.getElementById('pdbTooltip');
-                var fullName = getFullResidueName(atom.resn);
-                if (tooltip && fullName) {
-                    tooltip.innerHTML = '<strong>' + fullName + ' (' + atom.resn + ')</strong> — Chain ' + atom.chain + ', Pos ' + atom.resi;
-                    tooltip.style.display = 'block';
-                }
-            }
-        },
-        function() {
-            var tooltip = document.getElementById('pdbTooltip');
-            if (tooltip) tooltip.style.display = 'none';
-        }
-    );
-} catch(e) {
-    console.log('setHoverable not supported');
-}
-
-// Отслеживание мыши для позиции тултипа
-document.addEventListener('mousemove', function(e) {
-    var tooltip = document.getElementById('pdbTooltip');
-    if (tooltip && tooltip.style.display === 'block') {
-        tooltip.style.left = (e.clientX + 15) + 'px';
-        tooltip.style.top = (e.clientY - 30) + 'px';
+// Стрелки между атомами серы
+setTimeout(function() {
+    for (var i = 0; i < peptideBonds.length; i++) {
+        var b = peptideBonds[i];
+        pdbViewer.addArrow({
+            start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+            end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+            radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+        });
     }
+    pdbViewer.render();
+}, 100);
+
+// КЛИК ПО АТОМУ — показывает всплывашку
+pdbViewer.setClickable({}, true, function(atom, viewer, event, container) {
+    if (!atom) return;
+    
+    var fullName = getFullResidueName(atom.resn);
+    var text = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+    
+    // Создаём простой div на месте клика
+    var popup = document.createElement('div');
+    popup.textContent = text;
+    popup.style.cssText = 'position:fixed; background:#2c5282; color:white; padding:8px 12px; border-radius:6px; font-size:13px; z-index:99999; pointer-events:none; box-shadow:0 2px 10px rgba(0,0,0,0.3);';
+    popup.style.left = (event.clientX + 15) + 'px';
+    popup.style.top = (event.clientY - 10) + 'px';
+    document.body.appendChild(popup);
+    
+    // Удаляем через 2 секунды
+    setTimeout(function() {
+        if (popup.parentNode) popup.parentNode.removeChild(popup);
+    }, 2000);
 });
     
     // Стрелки между атомами серы
