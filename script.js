@@ -712,7 +712,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     };
     
     setRepresentation('cartoon');
-}}
+}
 
 function setRepresentation(type) {
     if (!pdbViewer || !window.pdbContentCache) return;
