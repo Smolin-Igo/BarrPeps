@@ -279,14 +279,14 @@ container.style.height = container.clientHeight + 'px';
 
 var rect = container.getBoundingClientRect();
 if (rect.height < 100) {
-    container.style.height = '750px';
+    container.style.height = '400px';
     rect = container.getBoundingClientRect();
 }
 
 pdbViewer = $3Dmol.createViewer(container, { 
     backgroundColor: 'white',
     width: rect.width || 800,
-    height: rect.height || 750
+    height: rect.height || 400
 });
 pdbViewer.addModel(content, 'pdb');
 
@@ -308,14 +308,16 @@ pdbViewer.addModel(content, 'pdb');
         pdbViewer.addSphere({ center:{x:bonds[i].atom2.x,y:bonds[i].atom2.y,z:bonds[i].atom2.z}, radius:0.4, color:0xffcc00 });
     }
     
-    pdbViewer.zoomTo();
+    pdbViewer.render();
+pdbViewer.zoomTo();
+pdbViewer.render();
     
-    setTimeout(function() {
-        for (var i = 0; i < bonds.length; i++) {
-            pdbViewer.addArrow({ start:{x:bonds[i].atom1.x,y:bonds[i].atom1.y,z:bonds[i].atom1.z}, end:{x:bonds[i].atom2.x,y:bonds[i].atom2.y,z:bonds[i].atom2.z}, radius:0.12, radiusRatio:1.0, color:0xff8800, alpha:0.9 });
-        }
-        pdbViewer.render();
-    }, 100);
+    // Даём время на отрисовку и ещё раз обновляем размер
+setTimeout(function() {
+    pdbViewer.resize();
+    pdbViewer.zoomTo();
+    pdbViewer.render();
+}, 200);
     
     // Hover popup
     var oldHover = document.getElementById('atomHoverPopup'); if (oldHover) oldHover.remove();
