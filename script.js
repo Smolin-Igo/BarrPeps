@@ -274,106 +274,73 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     }
     
     container.innerHTML = '';
-    container.style.width = container.clientWidth + 'px';
-container.style.height = container.clientHeight + 'px';
 
-var rect = container.getBoundingClientRect();
-if (rect.height < 100) {
-    container.style.height = '400px';
-    rect = container.getBoundingClientRect();
-}
+// Фиксируем размер контейнера
+container.style.width = '100%';
+container.style.height = '400px';
 
+// Создаём viewer с явными размерами
 pdbViewer = $3Dmol.createViewer(container, { 
     backgroundColor: 'white',
-    width: rect.width || 800,
-    height: rect.height || 400
+    width: container.clientWidth || 800,
+    height: 400
 });
 pdbViewer.addModel(content, 'pdb');
 
-    
-    var peptideColors = [];
-    if (peptideInfo && peptideInfo.residues.length > 0) {
-        pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
-        for (var i = 0; i < peptideInfo.residues.length; i++) {
-            var clr = getRainbowColor(i, peptideInfo.residues.length);
-            peptideColors.push({chain:peptideInfo.chain, resi:peptideInfo.residues[i].resSeq, color:clr});
-            pdbViewer.addStyle({ chain:peptideInfo.chain, resi:peptideInfo.residues[i].resSeq }, { cartoon: { color:clr, opacity:0.95 } });
-        }
-    } else {
-        pdbViewer.setStyle({}, { cartoon: { colorscheme:'ss', opacity:0.85 } });
+// Применяем стили
+var peptideColors = [];
+if (peptideInfo && peptideInfo.residues.length > 0) {
+    pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
+    for (var i = 0; i < peptideInfo.residues.length; i++) {
+        var clr = getRainbowColor(i, peptideInfo.residues.length);
+        peptideColors.push({chain:peptideInfo.chain, resi:peptideInfo.residues[i].resSeq, color:clr});
+        pdbViewer.addStyle({ chain:peptideInfo.chain, resi:peptideInfo.residues[i].resSeq }, { cartoon: { color:clr, opacity:0.95 } });
     }
-    
-    for (var i = 0; i < bonds.length; i++) {
-        pdbViewer.addSphere({ center:{x:bonds[i].atom1.x,y:bonds[i].atom1.y,z:bonds[i].atom1.z}, radius:0.4, color:0xffcc00 });
-        pdbViewer.addSphere({ center:{x:bonds[i].atom2.x,y:bonds[i].atom2.y,z:bonds[i].atom2.z}, radius:0.4, color:0xffcc00 });
-    }
-    
-    pdbViewer.render();
+} else {
+    pdbViewer.setStyle({}, { cartoon: { colorscheme:'ss', opacity:0.85 } });
+}
+
+// Сферы
+for (var i = 0; i < bonds.length; i++) {
+    pdbViewer.addSphere({ center:{x:bonds[i].atom1.x,y:bonds[i].atom1.y,z:bonds[i].atom1.z}, radius:0.4, color:0xffcc00 });
+    pdbViewer.addSphere({ center:{x:bonds[i].atom2.x,y:bonds[i].atom2.y,z:bonds[i].atom2.z}, radius:0.4, color:0xffcc00 });
+}
+
 pdbViewer.zoomTo();
 pdbViewer.render();
-    
-    // Даём время на отрисовку и ещё раз обновляем размер
+
+// Принудительно меняем размер canvas после создания
 setTimeout(function() {
+    var canvas = container.querySelector('canvas');
+    if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '400px';
+        canvas.width = container.clientWidth;
+        canvas.height = 400;
+    }
     pdbViewer.resize();
     pdbViewer.zoomTo();
     pdbViewer.render();
-}, 200);
-    
-    // Hover popup
-    var oldHover = document.getElementById('atomHoverPopup'); if (oldHover) oldHover.remove();
-    var hoverPopup = document.createElement('div');
-    hoverPopup.id = 'atomHoverPopup';
-    hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
-    document.body.appendChild(hoverPopup);
-    
-    var lastKey = null;
-    function restoreColor(key) {
-        if (!key) return;
-        var parts = key.split('_'), chain = parts[0], resi = parseInt(parts[1]);
-        for (var i = 0; i < peptideColors.length; i++) {
-            if (peptideColors[i].chain === chain && peptideColors[i].resi === resi) {
-                pdbViewer.addStyle({chain:chain,resi:resi},{cartoon:{color:peptideColors[i].color,opacity:0.95}});
-                return;
-            }
-        }
-        pdbViewer.addStyle({chain:chain,resi:resi},{cartoon:{color:0x445566,opacity:0.45}});
+}, 100);
+
+// Ещё раз через 300мс для надёжности
+setTimeout(function() {
+    var canvas = container.querySelector('canvas');
+    if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '400px';
     }
-    
-    pdbViewer.setHoverable({}, true,
-        function(atom) {
-            if (atom) {
-                hoverPopup.textContent = getFullResidueName(atom.resn) + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
-                hoverPopup.style.display = 'block';
-                hoverPopup.style.left = (lastMouseX + 18) + 'px';
-                hoverPopup.style.top = (lastMouseY + 18) + 'px';
-                var ck = atom.chain + '_' + atom.resi;
-                if (lastKey !== ck) {
-                    if (lastKey) restoreColor(lastKey);
-                    pdbViewer.addStyle({chain:atom.chain,resi:atom.resi},{cartoon:{color:0xff4488,opacity:1.0}});
-                    lastKey = ck;
-                    pdbViewer.render();
-                }
-            } else {
-                hoverPopup.style.display = 'none';
-                if (lastKey) { restoreColor(lastKey); lastKey = null; pdbViewer.render(); }
-            }
-        },
-        function() { hoverPopup.style.display = 'none'; if (lastKey) { restoreColor(lastKey); lastKey = null; pdbViewer.render(); } }
-    );
-    
-    window.pdbContentCache = content;
-    window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: bonds };
-    
-    // Кнопки
-    setTimeout(function() {
-        var parentDiv = container.parentNode;
-        var ec = parentDiv.querySelector('.structure-controls'); if (ec) ec.remove();
-        var cc = document.createElement('div');
-        cc.className = 'structure-controls';
-        cc.innerHTML = '<button id="btn-cartoon" class="active" onclick="window.setRepresentation(\'cartoon\')">Cartoon</button><button id="btn-ballstick" onclick="window.setRepresentation(\'ballAndStick\')">Ball & Stick</button>';
-        parentDiv.appendChild(cc);
-    }, 50);
-}
+    pdbViewer.resize();
+    pdbViewer.render();
+}, 300);
+
+// Стрелки
+setTimeout(function() {
+    for (var i = 0; i < bonds.length; i++) {
+        pdbViewer.addArrow({ start:{x:bonds[i].atom1.x,y:bonds[i].atom1.y,z:bonds[i].atom1.z}, end:{x:bonds[i].atom2.x,y:bonds[i].atom2.y,z:bonds[i].atom2.z}, radius:0.12, radiusRatio:1.0, color:0xff8800, alpha:0.9 });
+    }
+    pdbViewer.render();
+}, 400);
 
 function setRepresentation(type) {
     if (!pdbViewer || !window.pdbContentCache) return;
