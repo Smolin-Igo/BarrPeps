@@ -591,6 +591,8 @@ function renderPDBStructure(content, pdbId, peptideSeq, dbBonds) {
     
     // Парсим заголовок PDB
     var pdbHeader = parsePDBHeader(content);
+    console.log('Chain info:', JSON.stringify(pdbHeader.chainInfo));
+console.log('Molecule chains:', JSON.stringify(pdbHeader.moleculeChains));
 
 // Выведем первые 200 строк PDB для анализа
 var lines = content.split('\n');
