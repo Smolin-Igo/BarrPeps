@@ -543,16 +543,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     container.innerHTML = '';
     
-    // Полноэкранный режим
-    var isFullscreen = container.classList.contains('fullscreen-pdb');
-    var viewerWidth = isFullscreen ? window.innerWidth : container.clientWidth;
-    var viewerHeight = isFullscreen ? window.innerHeight - 60 : container.clientHeight;
-    
-    pdbViewer = $3Dmol.createViewer(container, { 
-        backgroundColor: 'white',
-        width: viewerWidth,
-        height: viewerHeight
-    });
+    pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
     pdbViewer.addModel(pdbContent, 'pdb');
     
     var peptideColors = [];
@@ -688,63 +679,21 @@ function toggleFullscreenPDB() {
     var isFullscreen = container.classList.contains('fullscreen-pdb');
     
     if (!isFullscreen) {
-        // Сохраняем оригинальные стили
-        container.dataset.originalPosition = container.style.position;
-        container.dataset.originalWidth = container.style.width;
-        container.dataset.originalHeight = container.style.height;
-        container.dataset.originalZIndex = container.style.zIndex;
-        container.dataset.originalTop = container.style.top;
-        container.dataset.originalLeft = container.style.left;
-        container.dataset.originalBackground = container.style.background;
-        
-        // Применяем полноэкранные стили
-        container.style.position = 'fixed';
-        container.style.top = '0';
-        container.style.left = '0';
-        container.style.width = '100vw';
-        container.style.height = '100vh';
-        container.style.zIndex = '9999';
-        container.style.background = '#000';
         container.classList.add('fullscreen-pdb');
-        
-        // Меняем текст кнопки
         var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = '✕ Exit Fullscreen';
-        
-        // Добавляем кнопку закрытия
-        var closeBtn = document.createElement('button');
-        closeBtn.id = 'closeFullscreenBtn';
-        closeBtn.textContent = '✕';
-        closeBtn.style.cssText = 'position:fixed; top:10px; right:10px; z-index:10000; background:#e53e3e; color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:20px; cursor:pointer;';
-        closeBtn.onclick = toggleFullscreenPDB;
-        document.body.appendChild(closeBtn);
-        
+        if (btn) btn.textContent = 'Exit Fullscreen';
     } else {
-        // Восстанавливаем оригинальные стили
-        container.style.position = container.dataset.originalPosition || '';
-        container.style.width = container.dataset.originalWidth || '';
-        container.style.height = container.dataset.originalHeight || '';
-        container.style.zIndex = container.dataset.originalZIndex || '';
-        container.style.top = container.dataset.originalTop || '';
-        container.style.left = container.dataset.originalLeft || '';
-        container.style.background = container.dataset.originalBackground || '';
         container.classList.remove('fullscreen-pdb');
-        
-        // Меняем текст кнопки
         var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = '⛶ Fullscreen';
-        
-        // Удаляем кнопку закрытия
-        var closeBtn = document.getElementById('closeFullscreenBtn');
-        if (closeBtn) closeBtn.remove();
+        if (btn) btn.textContent = 'Fullscreen';
     }
     
-    // Пересоздаем viewer с новыми размерами
-    if (window.pdbContentCache && window.currentPdbInfo && window.currentPeptideSequence) {
+    // Перерисовываем структуру
+    if (window.pdbContentCache) {
         renderPDBStructure(
             window.pdbContentCache, 
             document.getElementById('currentPdbId')?.textContent || '', 
-            window.currentPeptideSequence, 
+            window.currentPeptideSequence || '', 
             window.currentDisulfideBonds || []
         );
     }
