@@ -786,11 +786,11 @@ pdbViewer.setHoverable({}, true,
                     );
                 }
                 
-                // Добавляем новую подсветку — ярко-розовый
-                pdbViewer.setStyle(
-                    { chain: atom.chain, resi: atom.resi },
-                    { cartoon: { color: 0xff4488 }, stick: { color: 0xff4488, radius: 0.2 }, sphere: { color: 0xff4488, scale: 0.5 } }
-                );
+                // Используем addStyle для добавления подсветки
+pdbViewer.addStyle(
+    { chain: atom.chain, resi: atom.resi },
+    { cartoon: { color: 0xff4488, opacity: 1.0 } }
+);
                 
                 lastHoveredKey = currentKey;
                 pdbViewer.render();
@@ -800,10 +800,11 @@ pdbViewer.setHoverable({}, true,
             // Убираем подсветку
             if (lastHoveredKey) {
                 var oldParts = lastHoveredKey.split('_');
-                pdbViewer.setStyle(
-                    { chain: oldParts[0], resi: parseInt(oldParts[1]) },
-                    { cartoon: { color: 0x445566, opacity: 0.45 } }
-                );
+                // Используем addStyle для добавления подсветки
+pdbViewer.addStyle(
+    { chain: atom.chain, resi: atom.resi },
+    { cartoon: { color: 0xff4488, opacity: 1.0 } }
+);
                 lastHoveredKey = null;
                 pdbViewer.render();
             }
@@ -813,10 +814,11 @@ pdbViewer.setHoverable({}, true,
         hoverPopup.style.display = 'none';
         if (lastHoveredKey) {
             var oldParts = lastHoveredKey.split('_');
-            pdbViewer.setStyle(
-                { chain: oldParts[0], resi: parseInt(oldParts[1]) },
-                { cartoon: { color: 0x445566, opacity: 0.45 } }
-            );
+            // Используем addStyle для добавления подсветки
+pdbViewer.addStyle(
+    { chain: atom.chain, resi: atom.resi },
+    { cartoon: { color: 0xff4488, opacity: 1.0 } }
+);
             lastHoveredKey = null;
             pdbViewer.render();
         }
