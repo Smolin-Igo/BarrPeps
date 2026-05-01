@@ -80,7 +80,6 @@ function restoreFilters() {
         if (filters.sortDirection) sortDirection = filters.sortDirection;
         if (filters.currentView) currentView = filters.currentView;
         
-        // Восстанавливаем чекбоксы
         setTimeout(function() {
             if (selectedSources.length > 0) {
                 document.querySelectorAll('#sourceDropdown input[type="checkbox"]').forEach(function(cb) {
@@ -106,8 +105,6 @@ function restoreFilters() {
 
 // ========== EXCEL LOADER ==========
 function loadExcelFile() {
-    console.log('Loading database.xlsx...');
-    
     fetch('database.xlsx')
         .then(function(response) {
             if (!response.ok) throw new Error('HTTP error: ' + response.status);
@@ -115,16 +112,11 @@ function loadExcelFile() {
         })
         .then(function(arrayBuffer) {
             var workbook = XLSX.read(arrayBuffer, { type: 'array' });
-            var sheetNames = workbook.SheetNames;
-            console.log('Sheets found:', sheetNames);
             
-            // Загружаем peptides с прямым доступом к ячейкам для литературы
             var peptidesSheet = workbook.Sheets['peptides'];
             if (peptidesSheet) {
                 peptidesData = XLSX.utils.sheet_to_json(peptidesSheet);
-                console.log('Peptides loaded:', peptidesData.length);
                 
-                // Находим колонку literature
                 var range = XLSX.utils.decode_range(peptidesSheet['!ref']);
                 var literatureCol = -1;
                 
@@ -148,7 +140,7 @@ function loadExcelFile() {
                 }
             }
             
-            // Остальные листы
+            var sheetNames = workbook.SheetNames;
             for (var s = 0; s < sheetNames.length; s++) {
                 var sheetName = sheetNames[s];
                 if (sheetName.toLowerCase() === 'peptides') continue;
@@ -163,16 +155,43 @@ function loadExcelFile() {
                 else if (lowerName === 'pdb') pdbData = jsonData;
             }
             
-            if (peptidesData.length === 0) {
-                useFallbackData();
-            } else {
-                processAllData();
-            }
+            if (peptidesData.length === 0) useFallbackData();
+            else processAllData();
         })
         .catch(function(error) {
             console.error('Error:', error);
             useFallbackData();
         });
+}
+
+function useFallbackData() {
+    peptidesData = [];
+    processAllData();
+}
+
+function parseDisulfideBonds(disulfideStr) {
+    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') return [];
+    
+    var bonds = [];
+    var parts = disulfideStr.split(/[;,\n]+/);
+    
+    for (var i = 0; i < parts.length; i++) {
+        var part = parts[i].trim();
+        if (!part) continue;
+        
+        var match = part.match(/Cys\s*(\d+[A-Za-z]?)\s*-\s*Cys\s*(\d+[A-Za-z]?)/i);
+        if (match) {
+            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
+            continue;
+        }
+        
+        match = part.match(/Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)\s*-\s*Cys\s*\(\s*(\d+[A-Za-z]?)\s*\)/i);
+        if (match) {
+            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
+        }
+    }
+    
+    return bonds;
 }
 
 function processAllData() {
@@ -315,172 +334,14 @@ function processAllData() {
     }
 }
 
-function useFallbackData() {
-    peptidesData = [];
-    processAllData();
-}
+// ========== PDB FUNCTIONS ==========
 
-// Парсинг дисульфидных связей
-function parseDisulfideBonds(disulfideStr) {
-    if (!disulfideStr || disulfideStr.toLowerCase() === 'no' || disulfideStr === '') return [];
-    
-    var bonds = [];
-    var parts = disulfideStr.split(/[;,]/);
-    
-    for (var i = 0; i < parts.length; i++) {
-        var part = parts[i].trim();
-        if (!part) continue;
-        
-        var match = part.match(/Cys[-\s]*(\d+[A-Za-z]?)\s*-\s*Cys[-\s]*(\d+[A-Za-z]?)/i);
-        if (match) {
-            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
-            continue;
-        }
-        
-        match = part.match(/Cys\s*\((\d+[A-Za-z]?)\)\s*-\s*Cys\s*\((\d+[A-Za-z]?)\)/i);
-        if (match) {
-            bonds.push({ cys1: match[1], cys2: match[2], raw: part });
-        }
-    }
-    
-    return bonds;
-}
-
-// Найти остатки пептида в PDB для раскраски
-function findPeptideResiduesInPDB(pdbContent, peptideSequence, disulfideBonds) {
-    if (!peptideSequence && (!disulfideBonds || disulfideBonds.length === 0)) return null;
-    
-    var lines = pdbContent.split('\n');
-    var chains = {};
-    var currentChain = null;
-    var chainSequence = '';
-    
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (line.startsWith('ATOM') && line.substring(13, 15).trim() === 'CA') {
-            var chainId = line.substring(21, 22).trim();
-            var resName = line.substring(17, 20).trim();
-            var resSeq = parseInt(line.substring(22, 26).trim());
-            
-            if (currentChain !== chainId) {
-                if (currentChain && chainSequence) {
-                    chains[currentChain] = { sequence: chainSequence, residues: chains[currentChain]?.residues || [] };
-                }
-                currentChain = chainId;
-                chainSequence = '';
-                chains[chainId] = { sequence: '', residues: [] };
-            }
-            
-            var aa1 = convertThreeToOne(resName);
-            if (aa1) {
-                chainSequence += aa1;
-                chains[chainId].residues.push({ resSeq: resSeq, aa: aa1, chain: chainId });
-            }
-        }
-    }
-    if (currentChain && chainSequence) {
-        chains[currentChain] = { sequence: chainSequence, residues: chains[currentChain]?.residues || [] };
-    }
-    
-    // Если есть последовательность пептида - ищем по ней
-    var peptideResidues = [];
-    var peptideChain = null;
-    
-    if (peptideSequence) {
-        var target = peptideSequence.toUpperCase();
-        for (var chain in chains) {
-            var idx = chains[chain].sequence.indexOf(target);
-            if (idx !== -1) {
-                peptideResidues = chains[chain].residues.slice(idx, idx + target.length);
-                peptideChain = chain;
-                break;
-            }
-        }
-    }
-    
-    // Ищем цистеины из дисульфидных связей
-    var cysteineAtoms = {};
-    var cysteineResidues = {};
-    
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (line.startsWith('ATOM')) {
-            var atomName = line.substring(12, 16).trim();
-            var resName = line.substring(17, 20).trim();
-            var chainId = line.substring(21, 22).trim();
-            var resSeq = parseInt(line.substring(22, 26).trim());
-            
-            if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
-                var x = parseFloat(line.substring(30, 38));
-                var y = parseFloat(line.substring(38, 46));
-                var z = parseFloat(line.substring(46, 54));
-                var key = chainId + '_' + resSeq;
-                cysteineAtoms[key] = { resSeq: resSeq, chain: chainId, x: x, y: y, z: z };
-            }
-            
-            if (resName === 'CYS' && atomName === 'CA') {
-                var cKey = chainId + '_' + resSeq;
-                cysteineResidues[cKey] = { resSeq: resSeq, chain: chainId };
-            }
-        }
-    }
-    
-    // Сопоставляем дисульфидные связи
-    var matchedBonds = [];
-    if (disulfideBonds && disulfideBonds.length > 0) {
-        for (var i = 0; i < disulfideBonds.length; i++) {
-            var bond = disulfideBonds[i];
-            var cys1 = String(bond.cys1);
-            var cys2 = String(bond.cys2);
-            var found1 = null, found2 = null;
-            
-            for (var key in cysteineAtoms) {
-                var cys = cysteineAtoms[key];
-                var rs = String(cys.resSeq);
-                var cr = cys.chain + rs;
-                
-                if (rs === cys1 || cr === cys1 || rs === cys1.replace(/[A-Za-z]/g, '') ||
-                    (cys1.match(/^([A-Za-z])(\d+)$/) && cys.chain === RegExp.$1 && rs === RegExp.$2)) {
-                    found1 = cys;
-                }
-                if (rs === cys2 || cr === cys2 || rs === cys2.replace(/[A-Za-z]/g, '') ||
-                    (cys2.match(/^([A-Za-z])(\d+)$/) && cys.chain === RegExp.$1 && rs === RegExp.$2)) {
-                    found2 = cys;
-                }
-            }
-            
-            if (found1 && found2) {
-                matchedBonds.push({
-                    cys1: found1,
-                    cys2: found2,
-                    label: bond.raw || ('Cys' + cys1 + '-Cys' + cys2)
-                });
-            }
-        }
-    }
-    
-    // Собираем цистеины, которые УЧАСТВУЮТ в связях
-    var bondedCysteineKeys = {};
-    for (var i = 0; i < matchedBonds.length; i++) {
-        var b = matchedBonds[i];
-        bondedCysteineKeys[b.cys1.chain + '_' + b.cys1.resSeq] = true;
-        bondedCysteineKeys[b.cys2.chain + '_' + b.cys2.resSeq] = true;
-    }
-    
-    // Оставляем только атомы цистеинов, участвующих в связях
-    var bondedCysteineAtoms = {};
-    for (var key in cysteineAtoms) {
-        if (bondedCysteineKeys[key]) {
-            bondedCysteineAtoms[key] = cysteineAtoms[key];
-        }
-    }
-    
-    return {
-        peptideResidues: peptideResidues,
-        peptideChain: peptideChain,
-        cysteineAtoms: bondedCysteineAtoms,
-        matchedBonds: matchedBonds
-    };
+async function fetchPDBStructure(pdbId) {
+    if (!pdbId || pdbId === '' || pdbId === 'N/A') return null;
+    try {
+        var r = await fetch('https://files.rcsb.org/download/' + pdbId + '.pdb');
+        return r.ok ? await r.text() : null;
+    } catch(e) { return null; }
 }
 
 function convertThreeToOne(three) {
@@ -499,15 +360,17 @@ function getRainbowColor(index, total) {
     return (r<<16)|(g<<8)|b;
 }
 
-async function fetchPDBStructure(pdbId) {
-    if (!pdbId || pdbId === '' || pdbId === 'N/A') return null;
-    try {
-        var r = await fetch('https://files.rcsb.org/download/' + pdbId + '.pdb');
-        return r.ok ? await r.text() : null;
-    } catch(e) { return null; }
+function getFullResidueName(threeLetter) {
+    var names = {
+        'ALA':'Alanine','ARG':'Arginine','ASN':'Asparagine','ASP':'Aspartic acid',
+        'CYS':'Cysteine','GLN':'Glutamine','GLU':'Glutamic acid','GLY':'Glycine',
+        'HIS':'Histidine','ILE':'Isoleucine','LEU':'Leucine','LYS':'Lysine',
+        'MET':'Methionine','PHE':'Phenylalanine','PRO':'Proline','SER':'Serine',
+        'THR':'Threonine','TRP':'Tryptophan','TYR':'Tyrosine','VAL':'Valine'
+    };
+    return names[threeLetter.toUpperCase()] || threeLetter;
 }
 
-// Извлечение дисульфидных связей из SSBOND записей PDB
 function parseSSBOND(pdbContent) {
     var bonds = [];
     var lines = pdbContent.split('\n');
@@ -515,60 +378,18 @@ function parseSSBOND(pdbContent) {
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         if (line.startsWith('SSBOND')) {
-            // SSBOND   1 CYS A    6    CYS A   11
-            // Иногда цепь может быть пробелом
-            var chain1 = line.substring(15, 16).trim();
+            var chain1 = line.substring(15, 16).trim() || ' ';
             var res1 = parseInt(line.substring(17, 21).trim());
-            var chain2 = line.substring(29, 30).trim();
+            var chain2 = line.substring(29, 30).trim() || ' ';
             var res2 = parseInt(line.substring(31, 35).trim());
             
-            // Если цепь пустая (пробел), используем ' ' или первую найденную цепь
-            if (!chain1) chain1 = ' ';
-            if (!chain2) chain2 = ' ';
-            
-            bonds.push({
-                chain1: chain1,
-                res1: res1,
-                chain2: chain2,
-                res2: res2
-            });
-            
-            console.log('SSBOND: Cys' + chain1 + '_' + res1 + ' - Cys' + chain2 + '_' + res2);
+            bonds.push({ chain1: chain1, res1: res1, chain2: chain2, res2: res2 });
         }
     }
     
-    console.log('Total SSBOND records:', bonds.length);
     return bonds;
 }
 
-// Поиск атомов серы для конкретных остатков цистеина
-function findSGAtoms(pdbContent, cysteinePositions) {
-    var lines = pdbContent.split('\n');
-    var atoms = {};
-    
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
-            var atomName = line.substring(12, 16).trim();
-            var resName = line.substring(17, 20).trim();
-            var chainId = line.substring(21, 22).trim();
-            var resSeq = parseInt(line.substring(22, 26).trim());
-            
-            if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
-                var x = parseFloat(line.substring(30, 38));
-                var y = parseFloat(line.substring(38, 46));
-                var z = parseFloat(line.substring(46, 54));
-                
-                var key = chainId + '_' + resSeq;
-                atoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
-            }
-        }
-    }
-    
-    return atoms;
-}
-
-// Найти пептид в PDB по последовательности
 function findPeptideChain(pdbContent, peptideSequence) {
     if (!peptideSequence) return null;
     
@@ -580,9 +401,7 @@ function findPeptideChain(pdbContent, peptideSequence) {
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         if (line.startsWith('ATOM') && line.substring(13, 16).trim() === 'CA') {
-            var chainId = line.substring(21, 22).trim();
-            if (!chainId) chainId = ' ';
-            
+            var chainId = line.substring(21, 22).trim() || ' ';
             var resName = line.substring(17, 20).trim();
             var resSeq = parseInt(line.substring(22, 26).trim());
             
@@ -610,12 +429,10 @@ function findPeptideChain(pdbContent, peptideSequence) {
     
     var target = peptideSequence.toUpperCase();
     
-    // ТОЛЬКО точное совпадение
     for (var chain in chains) {
         var idx = chains[chain].seq.indexOf(target);
         if (idx !== -1) {
             var residues = chains[chain].residues.slice(idx, idx + target.length);
-            console.log('Found peptide in chain ' + chain + ': ' + residues.length + ' residues');
             return {
                 chain: chain,
                 residues: residues,
@@ -625,9 +442,14 @@ function findPeptideChain(pdbContent, peptideSequence) {
         }
     }
     
-    console.log('Exact peptide sequence not found in PDB');
     return null;
 }
+
+// Сохраняем последние координаты мыши глобально для hover
+var lastMouseEvent = null;
+document.addEventListener('mousemove', function(e) {
+    lastMouseEvent = e;
+});
 
 function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFromDB) {
     var container = document.getElementById('structure-viewer-pdb');
@@ -651,7 +473,7 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
             var atomName = line.substring(12, 16).trim();
             var resName = line.substring(17, 20).trim();
-            var chainId = line.substring(21, 22).trim();
+            var chainId = line.substring(21, 22).trim() || ' ';
             var resSeq = parseInt(line.substring(22, 26).trim());
             
             if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
@@ -751,90 +573,70 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.render();
     }, 100);
     
-// Подсказка при наведении + подсветка через пересоздание стиля
-var hoverPopup = document.createElement('div');
-hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
-document.body.appendChild(hoverPopup);
-
-var lastHoveredKey = null;
-
-document.addEventListener('mousemove', function(e) {
-    if (hoverPopup.style.display === 'block') {
-        hoverPopup.style.left = (e.clientX + 18) + 'px';
-        hoverPopup.style.top = (e.clientY - 15) + 'px';
-    }
-});
-
-pdbViewer.setHoverable({}, true, 
-    function(atom, viewer, event) {
-        if (atom) {
-            var fullName = getFullResidueName(atom.resn);
-            hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
-            hoverPopup.style.display = 'block';
-            hoverPopup.style.left = (event.clientX + 18) + 'px';
-            hoverPopup.style.top = (event.clientY - 15) + 'px';
-            
-            // Подсвечиваем — просто добавляем яркий стиль поверх существующего
-            var currentKey = atom.chain + '_' + atom.resi;
-            if (lastHoveredKey !== currentKey) {
-                // Убираем старую подсветку
+    // Hover подсказка
+    var hoverPopup = document.createElement('div');
+    hoverPopup.id = 'atomHoverPopup';
+    hoverPopup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
+    document.body.appendChild(hoverPopup);
+    
+    var lastHoveredKey = null;
+    
+    pdbViewer.setHoverable({}, true, 
+        function(atom) {
+            if (atom) {
+                var fullName = getFullResidueName(atom.resn);
+                hoverPopup.textContent = fullName + ' (' + atom.resn + ' ' + atom.resi + ') - Chain ' + atom.chain;
+                hoverPopup.style.display = 'block';
+                
+                if (lastMouseEvent) {
+                    hoverPopup.style.left = (lastMouseEvent.clientX + 18) + 'px';
+                    hoverPopup.style.top = (lastMouseEvent.clientY - 15) + 'px';
+                }
+                
+                var currentKey = atom.chain + '_' + atom.resi;
+                if (lastHoveredKey !== currentKey) {
+                    if (lastHoveredKey) {
+                        var oldParts = lastHoveredKey.split('_');
+                        pdbViewer.setStyle(
+                            { chain: oldParts[0], resi: parseInt(oldParts[1]) },
+                            { cartoon: { color: 0x445566, opacity: 0.45 } }
+                        );
+                    }
+                    
+                    pdbViewer.setStyle(
+                        { chain: atom.chain, resi: atom.resi },
+                        { cartoon: { color: 0xff4488, opacity: 1.0 } }
+                    );
+                    
+                    lastHoveredKey = currentKey;
+                    pdbViewer.render();
+                }
+            } else {
+                hoverPopup.style.display = 'none';
                 if (lastHoveredKey) {
                     var oldParts = lastHoveredKey.split('_');
                     pdbViewer.setStyle(
                         { chain: oldParts[0], resi: parseInt(oldParts[1]) },
                         { cartoon: { color: 0x445566, opacity: 0.45 } }
                     );
+                    lastHoveredKey = null;
+                    pdbViewer.render();
                 }
-                
-                // Используем addStyle для добавления подсветки
-pdbViewer.addStyle(
-    { chain: atom.chain, resi: atom.resi },
-    { cartoon: { color: 0xff4488, opacity: 1.0 } }
-);
-                
-                lastHoveredKey = currentKey;
-                pdbViewer.render();
             }
-        } else {
+        },
+        function() {
             hoverPopup.style.display = 'none';
-            // Убираем подсветку
             if (lastHoveredKey) {
                 var oldParts = lastHoveredKey.split('_');
-                // Используем addStyle для добавления подсветки
-pdbViewer.addStyle(
-    { chain: atom.chain, resi: atom.resi },
-    { cartoon: { color: 0xff4488, opacity: 1.0 } }
-);
+                pdbViewer.setStyle(
+                    { chain: oldParts[0], resi: parseInt(oldParts[1]) },
+                    { cartoon: { color: 0x445566, opacity: 0.45 } }
+                );
                 lastHoveredKey = null;
                 pdbViewer.render();
             }
         }
-    },
-    function(atom) {
-        hoverPopup.style.display = 'none';
-        if (lastHoveredKey) {
-            var oldParts = lastHoveredKey.split('_');
-            // Используем addStyle для добавления подсветки
-pdbViewer.addStyle(
-    { chain: atom.chain, resi: atom.resi },
-    { cartoon: { color: 0xff4488, opacity: 1.0 } }
-);
-            lastHoveredKey = null;
-            pdbViewer.render();
-        }
-    }
-);
-
-function removeHoverHighlight() {
-    if (lastHoveredResidue) {
-        var prev = lastHoveredResidue.split('_');
-        try {
-            pdbViewer.removeStyle({ chain: prev[0], resi: parseInt(prev[1]) }, { stick: null, sphere: null });
-            pdbViewer.render();
-        } catch(e) {}
-        lastHoveredResidue = null;
-    }
-}
+    );
     
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
@@ -850,17 +652,6 @@ function removeHoverHighlight() {
     }, 50);
 }
 
-function getFullResidueName(threeLetter) {
-    var names = {
-        'ALA':'Alanine','ARG':'Arginine','ASN':'Asparagine','ASP':'Aspartic acid',
-        'CYS':'Cysteine','GLN':'Glutamine','GLU':'Glutamic acid','GLY':'Glycine',
-        'HIS':'Histidine','ILE':'Isoleucine','LEU':'Leucine','LYS':'Lysine',
-        'MET':'Methionine','PHE':'Phenylalanine','PRO':'Proline','SER':'Serine',
-        'THR':'Threonine','TRP':'Tryptophan','TYR':'Tyrosine','VAL':'Valine'
-    };
-    return names[threeLetter.toUpperCase()] || threeLetter;
-}
-
 function setRepresentation(type) {
     if (!pdbViewer || !window.pdbContentCache) return;
     
@@ -873,9 +664,7 @@ function setRepresentation(type) {
     
     if (type === 'cartoon') {
         if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
-            // Фон - приглушенный сине-серый
-            pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.5 } });
-            
+            pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
@@ -887,73 +676,45 @@ function setRepresentation(type) {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
         
-        // Сферы на атомах серы
         for (var i = 0; i < peptideBonds.length; i++) {
             var bond = peptideBonds[i];
             pdbViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.4, color: 0xffcc00 });
             pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.4, color: 0xffcc00 });
         }
-        
-        pdbViewer.zoomTo();
-        
-        setTimeout(function() {
-            for (var i = 0; i < peptideBonds.length; i++) {
-                var b = peptideBonds[i];
-                pdbViewer.addArrow({
-                    start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
-                    end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
-                    radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-                });
-            }
-            pdbViewer.render();
-        }, 100);
-        
-    } else if (type === 'ballAndStick') {
+    } else {
         if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
-            // Фон - приглушенный сине-серый (контрастнее)
-            pdbViewer.setStyle({}, { 
-                stick: { color: 0x445566, radius: 0.06 },
-                sphere: { color: 0x445566, scale: 0.12 }
-            });
-            
+            pdbViewer.setStyle({}, { stick: { color: 0x445566, radius: 0.06 }, sphere: { color: 0x445566, scale: 0.12 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
                 var color = getRainbowColor(i, peptideInfo.residues.length);
                 pdbViewer.addStyle(
                     { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
-                    { 
-                        stick: { color: color, radius: 0.12 }, 
-                        sphere: { color: color, scale: 0.25 } 
-                    }
+                    { stick: { color: color, radius: 0.12 }, sphere: { color: color, scale: 0.25 } }
                 );
             }
         } else {
-            pdbViewer.setStyle({}, { 
-                stick: { colorscheme: 'elem', radius: 0.12 }, 
-                sphere: { colorscheme: 'elem', scale: 0.25 } 
-            });
+            pdbViewer.setStyle({}, { stick: { colorscheme: 'elem', radius: 0.12 }, sphere: { colorscheme: 'elem', scale: 0.25 } });
         }
         
-        // Сферы на атомах серы
         for (var i = 0; i < peptideBonds.length; i++) {
             var bond = peptideBonds[i];
             pdbViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.5, color: 0xffcc00 });
             pdbViewer.addSphere({ center: {x:bond.atom2.x, y:bond.atom2.y, z:bond.atom2.z}, radius: 0.5, color: 0xffcc00 });
         }
-        
-        pdbViewer.zoomTo();
-        
-        setTimeout(function() {
-            for (var i = 0; i < peptideBonds.length; i++) {
-                var b = peptideBonds[i];
-                pdbViewer.addArrow({
-                    start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
-                    end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
-                    radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-                });
-            }
-            pdbViewer.render();
-        }, 100);
     }
+    
+    pdbViewer.zoomTo();
+    
+    setTimeout(function() {
+        for (var i = 0; i < peptideBonds.length; i++) {
+            var b = peptideBonds[i];
+            pdbViewer.addArrow({
+                start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
+                end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
+                radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+            });
+        }
+        pdbViewer.render();
+    }, 100);
     
     var cb = document.getElementById('btn-cartoon');
     var bb = document.getElementById('btn-ballstick');
@@ -1064,26 +825,22 @@ function displayFeaturedPeptides() {
 
 // ========== BROWSE PAGE ==========
 function initBrowsePage() {
-    // Восстанавливаем фильтры
     var restored = restoreFilters();
     
     if (!restored) {
         filteredPeptides = [...peptidesData];
+        updateBrowseStats();
+        displayBrowseResults();
     } else {
-        // Применяем сохраненные фильтры
         applyFilters();
-        if (currentView) {
-            setTimeout(function() {
-                document.querySelectorAll('.toggle-btn').forEach(function(b,i) {
-                    b.classList.toggle('active', (currentView==='table'&&i===0)||(currentView==='card'&&i===1));
-                });
-            }, 100);
-        }
-        return; // applyFilters уже вызвал displayBrowseResults
+        setTimeout(function() {
+            document.querySelectorAll('.toggle-btn').forEach(function(b,i) {
+                b.classList.toggle('active', (currentView==='table'&&i===0)||(currentView==='card'&&i===1));
+            });
+        }, 100);
+        return;
     }
     
-    updateBrowseStats();
-    displayBrowseResults();
     setupBrowseEventListeners();
     initModificationSelector();
     initSourceSelector();
@@ -1182,12 +939,6 @@ function applyFilters() {
     filteredPeptides = result;
     updateBrowseStats();
     displayBrowseResults();
-    
-    // Сохраняем сортировку при возврате
-    if (sortColumn && sortDirection) {
-        sortBy(sortColumn);
-        if (sortDirection === 'desc') sortBy(sortColumn); // дважды для desc
-    }
 }
 
 function resetFilters() {
@@ -1198,9 +949,6 @@ function resetFilters() {
     
     document.querySelectorAll('#sourceDropdown input,#modDropdown input').forEach(function(cb){cb.checked=false;});
     selectedSources=[]; selectedMods=[];
-    var st=document.getElementById('sourceSelectedText'); if(st) st.textContent='All';
-    var mt=document.getElementById('modSelectedText'); if(mt) mt.textContent='All';
-    
     sortColumn='peptide_name'; sortDirection='asc';
     filteredPeptides=[...peptidesData];
     saveFilters();
@@ -1342,9 +1090,7 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
     window.currentPeptideSequence=peptide.sequence_clean;
     window.currentDisulfideBonds=peptide.disulfide_bonds||[];
     
-    // Сохраняем ссылку "Back to Browse" с параметрами
-    var backUrl = 'browse.html';
-    
+    // Modifications
     var modsH='';
     if(peptide.modifications&&peptide.modifications.length){
         modsH='<div class="detail-section"><h3>Modifications</h3><div class="detail-row"><span class="detail-value">'+peptide.modifications.map(function(m){return m.replace(/_/g,' ');}).join(', ')+'</span></div></div>';
@@ -1352,6 +1098,7 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
         modsH='<div class="detail-section"><h3>Modifications</h3><div class="detail-row"><span class="detail-value">None reported</span></div></div>';
     }
     
+    // PDB
     var pdbH='';
     if(peptide.pdb_ids&&peptide.pdb_ids.length){
         pdbH='<div class="detail-section"><h3>PDB Structures</h3><div class="detail-row"><span class="detail-label">Available:</span><span class="detail-value">'+peptide.pdb_ids.map(function(id){return'<a href="https://www.rcsb.org/structure/'+id+'" target="_blank" style="color:#4299e1;">'+id+'</a>';}).join(', ')+'</span></div>';
@@ -1361,6 +1108,7 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
     }
     if(pdbH) pdbH+='</div>';
     
+    // Experimental Data
     var expH='';
     if(peptide.experiments&&peptide.experiments.length){
         var seen={},unique=peptide.experiments.filter(function(e){var k=(e.method||'')+'|'+(e.response||'')+'|'+(e.result||'')+'|'+(e.unit||'');if(seen[k])return false;seen[k]=true;return true;});
@@ -1371,10 +1119,18 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
         expH='<div class="detail-section"><h3>Experimental Data</h3><div class="detail-row"><span class="detail-value">No experimental data available</span></div></div>';
     }
     
+    // References
     var refH='', litH=formatLiteratureLinks(peptide.notes||'');
     refH=litH?'<div class="detail-section"><h3>References</h3>'+litH+'</div>':'<div class="detail-section"><h3>References</h3><div class="detail-row"><span class="detail-value">No references available</span></div></div>';
     
-    var html='<div class="peptide-detail-container"><div style="margin-bottom:1rem;"><a href="'+backUrl+'" class="btn-secondary back-button">← Back to Browse</a><h1 style="color:#2c5282;margin-top:0.5rem;">'+(peptide.peptide_name||'N/A')+'</h1><p style="color:#718096;">ID: '+peptide.id+'</p></div>';
+    // Disulfide bonds
+    var disulfideH = '';
+    if(peptide.disulfide_bridge && peptide.disulfide_bridge.toLowerCase() !== 'no' && peptide.disulfide_bridge !== ''){
+        disulfideH = '<div class="detail-section"><h3>Disulfide Bonds</h3><div class="detail-row"><span class="detail-value" style="color:#d69e2e;font-weight:600;">'+peptide.disulfide_bridge+'</span></div></div>';
+    }
+    
+    // Build page
+    var html='<div class="peptide-detail-container"><div style="margin-bottom:1rem;"><a href="browse.html" class="btn-secondary back-button">← Back to Browse</a><h1 style="color:#2c5282;margin-top:0.5rem;">'+(peptide.peptide_name||'N/A')+'</h1><p style="color:#718096;">ID: '+peptide.id+'</p></div>';
     
     if(hasPDB){
         var selH=validStructures.length>1?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;"><h3 style="font-size:0.9rem;margin:0;">3D Structure</h3><select id="pdbSelector" onchange="switchPDB(this.value)">'+validStructures.map(function(s,i){return'<option value="'+i+'"'+(i===0?' selected':'')+'>'+s.id+'</option>';}).join('')+'</select></div>':'<h3 style="font-size:0.9rem;margin-bottom:0.6rem;">3D Structure - PDB: '+validStructures[0].id+'</h3>';
@@ -1384,7 +1140,18 @@ function displayPeptideDetail(peptide,pdbContents,pdbIds){
         html+='<div class="structure-viewer"><h3>3D Structure</h3><div class="no-structure"><p>No PDB structure available.</p></div></div>';
     }
     
-    html+='<div class="detail-section"><h3>Basic Information</h3><div class="detail-row"><span class="detail-label">Sequence:</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">'+(peptide.sequence_one_letter||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Clean:</span><span class="detail-value" style="font-family:monospace;">'+(peptide.sequence_clean||'N/A')+'</span></div><div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">'+(peptide.length||'N/A')+' aa</span></div><div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">'+(peptide.molecular_weight?peptide.molecular_weight.toFixed(2):'N/A')+' Da</span></div>'+(peptide.molecular_formula?'<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">'+peptide.molecular_formula+'</span></div>':'')+'</div>'+(peptide.structure_type&&peptide.structure_type!=='N/A'?'<div class="detail-section"><h3>Structure</h3><div class="detail-row"><span class="detail-label">Type:</span><span class="detail-value">'+peptide.structure_type+'</span></div>'+(peptide.disulfide_bridge ? '<div class="detail-row"><span class="detail-label">Disulfide bonds:</span><span class="detail-value" style="color: #d69e2e; font-weight: 600;">' + peptide.disulfide_bridge + '</span></div>' : '')+'</div>':'')+(peptide.source_organism&&peptide.source_organism!=='N/A'?'<div class="detail-section"><h3>Source</h3><div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">'+peptide.source_organism+'</span></div></div>':'')+pdbH+modsH+expH+refH+'</div>';
+    html+='<div class="detail-section"><h3>Basic Information</h3>'+
+        '<div class="detail-row"><span class="detail-label">Sequence (1-letter):</span><span class="detail-value" style="font-family:monospace;word-break:break-all;">'+(peptide.sequence_one_letter||'N/A')+'</span></div>'+
+        '<div class="detail-row"><span class="detail-label">Sequence (3-letter):</span><span class="detail-value" style="word-break:break-all;">'+(peptide.sequence_three_letter||'N/A')+'</span></div>'+
+        '<div class="detail-row"><span class="detail-label">Clean sequence:</span><span class="detail-value" style="font-family:monospace;">'+(peptide.sequence_clean||'N/A')+'</span></div>'+
+        '<div class="detail-row"><span class="detail-label">Length:</span><span class="detail-value">'+(peptide.length||'N/A')+' aa</span></div>'+
+        '<div class="detail-row"><span class="detail-label">MW:</span><span class="detail-value">'+(peptide.molecular_weight?peptide.molecular_weight.toFixed(2):'N/A')+' Da</span></div>'+
+        (peptide.molecular_formula?'<div class="detail-row"><span class="detail-label">Formula:</span><span class="detail-value">'+peptide.molecular_formula+'</span></div>':'')+
+        '</div>'+
+        (peptide.structure_type&&peptide.structure_type!=='N/A'?'<div class="detail-section"><h3>Structural Properties</h3><div class="detail-row"><span class="detail-label">Conformation:</span><span class="detail-value">'+peptide.structure_type+'</span></div></div>':'')+
+        disulfideH+
+        (peptide.source_organism&&peptide.source_organism!=='N/A'?'<div class="detail-section"><h3>Source</h3><div class="detail-row"><span class="detail-label">Organism:</span><span class="detail-value">'+peptide.source_organism+'</span></div></div>':'')+
+        pdbH+modsH+expH+refH+'</div>';
     
     var dc=document.getElementById('peptideDetail');
     if(dc) dc.innerHTML=html;
