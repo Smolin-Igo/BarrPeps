@@ -462,7 +462,6 @@ function getChainDescription(chain, pdbHeader) {
                 });
             }
         }
-    }
     
     // Убираем повторяющиеся слова в title
     if (header.title) {
