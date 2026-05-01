@@ -773,6 +773,32 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         }
     }
     
+    // Добавляем тултип при наведении (HTML-based)
+container.addEventListener('mousemove', function(e) {
+    var tooltip = document.getElementById('pdbTooltip');
+    if (!tooltip) return;
+    
+    var atom = pdbViewer.getAtomFromViewerPoint(e.offsetX, e.offsetY);
+    if (atom) {
+        var resName = atom.resn;
+        var resSeq = atom.resi;
+        var chain = atom.chain;
+        var fullName = getFullResidueName(resName);
+        
+        tooltip.innerHTML = '<strong>' + fullName + ' (' + resName + ')</strong><br>Position: ' + resSeq + '<br>Chain: ' + chain;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.pageX + 15) + 'px';
+        tooltip.style.top = (e.pageY - 30) + 'px';
+    } else {
+        tooltip.style.display = 'none';
+    }
+});
+
+container.addEventListener('mouseleave', function() {
+    var tooltip = document.getElementById('pdbTooltip');
+    if (tooltip) tooltip.style.display = 'none';
+});
+    
     // Сферы на атомах серы
     for (var i = 0; i < peptideBonds.length; i++) {
         var bond = peptideBonds[i];
