@@ -681,11 +681,11 @@ function toggleFullscreenPDB() {
     
     if (!modal || !viewerDiv) return;
     
-    var isVisible = modal.style.display === 'block';
+    var isVisible = modal.style.display === 'flex';
     
     if (!isVisible) {
         // Показываем модальное окно
-        modal.style.display = 'block';
+        modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
         
         // Очищаем и создаём новый viewer
@@ -694,12 +694,11 @@ function toggleFullscreenPDB() {
         var fullViewer = $3Dmol.createViewer(viewerDiv, { backgroundColor: 'white' });
         fullViewer.addModel(window.pdbContentCache, 'pdb');
         
-        // Копируем стили из основного viewer'а
+        // Копируем стили
         var info = window.currentPdbInfo || {};
         var peptideInfo = info.peptideInfo;
         var peptideBonds = info.peptideBonds || [];
         
-        // Раскраска
         if (peptideInfo && peptideInfo.residues && peptideInfo.residues.length > 0) {
             fullViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
@@ -713,7 +712,6 @@ function toggleFullscreenPDB() {
             fullViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
         
-        // Сферы и стрелки
         for (var i = 0; i < peptideBonds.length; i++) {
             var bond = peptideBonds[i];
             fullViewer.addSphere({ center: {x:bond.atom1.x, y:bond.atom1.y, z:bond.atom1.z}, radius: 0.5, color: 0xffcc00 });
@@ -734,11 +732,7 @@ function toggleFullscreenPDB() {
             fullViewer.render();
         }, 100);
         
-        // Сохраняем ссылку на fullscreen viewer
         window.fullscreenViewer = fullViewer;
-        
-        var btn = document.getElementById('btn-fullscreen');
-        if (btn) btn.textContent = '✕ Exit';
         
     } else {
         closeFullscreenModal();
@@ -752,9 +746,6 @@ function closeFullscreenModal() {
         document.body.style.overflow = '';
     }
     window.fullscreenViewer = null;
-    
-    var btn = document.getElementById('btn-fullscreen');
-    if (btn) btn.textContent = '⛶ Fullscreen';
 }
 
 function setRepresentation(type) {
