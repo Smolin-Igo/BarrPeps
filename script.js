@@ -635,19 +635,15 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
     
-    // Проверяем размер пептида
     if (peptideInfo && peptideSequence) {
         if (peptideInfo.residues.length > peptideSequence.length * 1.5) {
-            console.log('WARNING: Chain too large, not highlighting');
             peptideInfo = null;
         }
     }
     
     var ssbonds = parseSSBOND(pdbContent);
     
-    // Собираем все атомы (не только серу) для подсказок
-    var allAtoms = {};
-    var residueInfo = {}; // Для подсказок: chain_resSeq -> {resName, resSeq, chain}
+    var allSGAtoms = {};
     var lines = pdbContent.split('\n');
     
     for (var i = 0; i < lines.length; i++) {
@@ -661,20 +657,9 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
             var y = parseFloat(line.substring(38, 46));
             var z = parseFloat(line.substring(46, 54));
             
-            var key = chainId + '_' + resSeq;
-            
             if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
+                var key = chainId + '_' + resSeq;
                 allSGAtoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
-            }
-            
-            // Сохраняем информацию об остатке
-            if (!residueInfo[key]) {
-                residueInfo[key] = { 
-                    resName: resName, 
-                    resSeq: resSeq, 
-                    chain: chainId,
-                    fullName: getFullResidueName(resName)
-                };
             }
         }
     }
@@ -748,57 +733,6 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
         pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
     }
     
-    // Добавляем подсказки при наведении
-    pdbViewer.addSurface($3Dmol.SurfaceType.VDW, { opacity: 0.0, colorscheme: 'white' }, {}, {}); // Прозрачная поверхность для hover
-    
-    // Настраиваем отображение при наведении через label
-    for (var key in residueInfo) {
-        var ri = residueInfo[key];
-        // Отображаем только для пептида (если он найден), иначе для всех
-        var showLabel = !peptideInfo || (peptideInfo.chain === ri.chain && 
-                                          ri.resSeq >= peptideInfo.startRes && 
-                                          ri.resSeq <= peptideInfo.endRes);
-        
-        if (showLabel) {
-            pdbViewer.addLabel(ri.resName + ' ' + ri.resSeq, {
-                position: { chain: ri.chain, resi: ri.resSeq },
-                backgroundColor: 0x2c5282,
-                fontColor: 'white',
-                fontSize: 10,
-                showBackground: true,
-                backgroundOpacity: 0.8,
-                inFront: true,
-                fixedHeight: false
-            });
-        }
-    }
-    
-    // Добавляем тултип при наведении (HTML-based)
-container.addEventListener('mousemove', function(e) {
-    var tooltip = document.getElementById('pdbTooltip');
-    if (!tooltip) return;
-    
-    var atom = pdbViewer.getAtomFromViewerPoint(e.offsetX, e.offsetY);
-    if (atom) {
-        var resName = atom.resn;
-        var resSeq = atom.resi;
-        var chain = atom.chain;
-        var fullName = getFullResidueName(resName);
-        
-        tooltip.innerHTML = '<strong>' + fullName + ' (' + resName + ')</strong><br>Position: ' + resSeq + '<br>Chain: ' + chain;
-        tooltip.style.display = 'block';
-        tooltip.style.left = (e.pageX + 15) + 'px';
-        tooltip.style.top = (e.pageY - 30) + 'px';
-    } else {
-        tooltip.style.display = 'none';
-    }
-});
-
-container.addEventListener('mouseleave', function() {
-    var tooltip = document.getElementById('pdbTooltip');
-    if (tooltip) tooltip.style.display = 'none';
-});
-    
     // Сферы на атомах серы
     for (var i = 0; i < peptideBonds.length; i++) {
         var bond = peptideBonds[i];
@@ -821,6 +755,36 @@ container.addEventListener('mouseleave', function() {
         pdbViewer.render();
     }, 100);
     
+    // Тултип при наведении
+    container.addEventListener('mousemove', function(e) {
+        var tooltip = document.getElementById('pdbTooltip');
+        if (!tooltip) return;
+        
+        try {
+            var rect = container.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            
+            var atom = pdbViewer.getAtomFromViewerPoint(x, y);
+            if (atom) {
+                var fullName = getFullResidueName(atom.resn);
+                tooltip.innerHTML = '<strong>' + fullName + ' (' + atom.resn + ')</strong><br>Position: ' + atom.resi + '<br>Chain: ' + atom.chain;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 15) + 'px';
+                tooltip.style.top = (e.clientY - 30) + 'px';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        } catch(err) {
+            tooltip.style.display = 'none';
+        }
+    });
+    
+    container.addEventListener('mouseleave', function() {
+        var tooltip = document.getElementById('pdbTooltip');
+        if (tooltip) tooltip.style.display = 'none';
+    });
+    
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
@@ -836,7 +800,6 @@ container.addEventListener('mouseleave', function() {
     }, 50);
 }
 
-// Полное имя остатка
 function getFullResidueName(threeLetter) {
     var names = {
         'ALA':'Alanine','ARG':'Arginine','ASN':'Asparagine','ASP':'Aspartic acid',
