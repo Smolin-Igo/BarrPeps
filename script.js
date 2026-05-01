@@ -341,6 +341,7 @@ setTimeout(function() {
     }
     pdbViewer.render();
 }, 400);
+}
 
 function setRepresentation(type) {
     if (!pdbViewer || !window.pdbContentCache) return;
