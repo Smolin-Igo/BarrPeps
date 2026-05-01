@@ -635,14 +635,17 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     var peptideInfo = findPeptideChain(pdbContent, peptideSequence);
     
+    // Проверяем размер пептида
     if (peptideInfo && peptideSequence) {
         if (peptideInfo.residues.length > peptideSequence.length * 1.5) {
+            console.log('WARNING: Chain too large, not highlighting');
             peptideInfo = null;
         }
     }
     
     var ssbonds = parseSSBOND(pdbContent);
     
+    // Собираем SG атомы
     var allSGAtoms = {};
     var lines = pdbContent.split('\n');
     
@@ -653,11 +656,11 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
             var resName = line.substring(17, 20).trim();
             var chainId = line.substring(21, 22).trim();
             var resSeq = parseInt(line.substring(22, 26).trim());
-            var x = parseFloat(line.substring(30, 38));
-            var y = parseFloat(line.substring(38, 46));
-            var z = parseFloat(line.substring(46, 54));
             
             if (resName === 'CYS' && (atomName === 'SG' || atomName === 'S')) {
+                var x = parseFloat(line.substring(30, 38));
+                var y = parseFloat(line.substring(38, 46));
+                var z = parseFloat(line.substring(46, 54));
                 var key = chainId + '_' + resSeq;
                 allSGAtoms[key] = { chain: chainId, resSeq: resSeq, x: x, y: y, z: z };
             }
@@ -717,8 +720,6 @@ function renderPDBStructure(pdbContent, pdbId, peptideSequence, disulfideBondsFr
     
     container.innerHTML = '';
     pdbViewer = $3Dmol.createViewer(container, { backgroundColor: 'white' });
-console.log('3Dmol viewer created:', pdbViewer);
-console.log('setClickable exists:', typeof pdbViewer.setClickable);
     pdbViewer.addModel(pdbContent, 'pdb');
     
     // Раскраска
@@ -743,30 +744,6 @@ console.log('setClickable exists:', typeof pdbViewer.setClickable);
     }
     
     pdbViewer.zoomTo();
-
-// Стрелки между атомами серы
-setTimeout(function() {
-    for (var i = 0; i < peptideBonds.length; i++) {
-        var b = peptideBonds[i];
-        pdbViewer.addArrow({
-            start: { x: b.atom1.x, y: b.atom1.y, z: b.atom1.z },
-            end: { x: b.atom2.x, y: b.atom2.y, z: b.atom2.z },
-            radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-        });
-    }
-    pdbViewer.render();
-}, 100);
-
-// ПРОСТОЙ ТЕСТ — клик по любому месту структуры
-try {
-    pdbViewer.setClickable({}, true, function(atom) {
-        console.log('CLICKED!', atom);
-        alert('Clicked on: ' + (atom ? (atom.resn + ' ' + atom.resi + ' chain ' + atom.chain) : 'nothing'));
-    });
-    console.log('setClickable installed successfully');
-} catch(e) {
-    console.error('setClickable error:', e);
-}
     
     // Стрелки между атомами серы
     setTimeout(function() {
@@ -781,40 +758,78 @@ try {
         pdbViewer.render();
     }, 100);
     
-    // Тултип при наведении
-    container.addEventListener('mousemove', function(e) {
-        var tooltip = document.getElementById('pdbTooltip');
-        if (!tooltip) return;
+    // Hover подсказка при наведении на атом
+    var hoverPopup = null;
+    
+    function createHoverPopup() {
+        var popup = document.createElement('div');
+        popup.id = 'atomHoverPopup';
+        popup.style.cssText = 'position:fixed; display:none; background:#1a202c; color:#e2e8f0; padding:6px 10px; border-radius:6px; font-size:12px; line-height:1.4; z-index:99999; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,0.5); border:1px solid #4a5568; max-width:200px;';
+        popup.innerHTML = '<div style="font-weight:bold; color:#ffcc00; margin-bottom:2px;"></div><div style="color:#a0aec0;"></div>';
+        document.body.appendChild(popup);
+        return popup;
+    }
+    
+    hoverPopup = createHoverPopup();
+    
+    setTimeout(function() {
+        var canvas = container.querySelector('canvas');
+        if (!canvas) return;
         
-        try {
-            var rect = container.getBoundingClientRect();
+        canvas.addEventListener('mousemove', function(e) {
+            var rect = canvas.getBoundingClientRect();
             var x = e.clientX - rect.left;
             var y = e.clientY - rect.top;
             
-            var atom = pdbViewer.getAtomFromViewerPoint(x, y);
-            if (atom) {
-                var fullName = getFullResidueName(atom.resn);
-                tooltip.innerHTML = '<strong>' + fullName + ' (' + atom.resn + ')</strong><br>Position: ' + atom.resi + '<br>Chain: ' + atom.chain;
-                tooltip.style.display = 'block';
-                tooltip.style.left = (e.clientX + 15) + 'px';
-                tooltip.style.top = (e.clientY - 30) + 'px';
-            } else {
-                tooltip.style.display = 'none';
+            try {
+                var atom = pdbViewer.getAtomFromViewerPoint(x, y);
+                
+                if (atom) {
+                    var fullName = getFullResidueName(atom.resn);
+                    var divs = hoverPopup.querySelectorAll('div');
+                    if (divs[0]) divs[0].textContent = fullName;
+                    if (divs[1]) divs[1].textContent = atom.resn + ' | Pos ' + atom.resi + ' | Chain ' + atom.chain;
+                    
+                    hoverPopup.style.display = 'block';
+                    hoverPopup.style.left = (e.clientX + 15) + 'px';
+                    hoverPopup.style.top = (e.clientY - 40) + 'px';
+                } else {
+                    hoverPopup.style.display = 'none';
+                }
+            } catch(err) {
+                hoverPopup.style.display = 'none';
             }
-        } catch(err) {
-            tooltip.style.display = 'none';
-        }
-    });
+        });
+        
+        canvas.addEventListener('mouseleave', function() {
+            hoverPopup.style.display = 'none';
+        });
+    }, 500);
     
-    container.addEventListener('mouseleave', function() {
-        var tooltip = document.getElementById('pdbTooltip');
-        if (tooltip) tooltip.style.display = 'none';
+    // Клик по атому для мобильных устройств
+    pdbViewer.setClickable({}, true, function(atom, viewer, event) {
+        if (!atom) return;
+        
+        var fullName = getFullResidueName(atom.resn);
+        var text = fullName + ' (' + atom.resn + ' ' + atom.resi + ') — Chain ' + atom.chain;
+        
+        document.querySelectorAll('.atom-click-popup').forEach(function(el) { el.remove(); });
+        
+        var popup = document.createElement('div');
+        popup.className = 'atom-click-popup';
+        popup.textContent = text;
+        popup.style.cssText = 'position:fixed; background:#1a202c; color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:500; z-index:99999; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); border-left:3px solid #ffcc00;';
+        popup.style.left = (event.clientX + 18) + 'px';
+        popup.style.top = (event.clientY - 15) + 'px';
+        document.body.appendChild(popup);
+        
+        setTimeout(function() { popup.remove(); }, 2500);
     });
     
     window.pdbContentCache = pdbContent;
     window.currentPdbInfo = { peptideInfo: peptideInfo, peptideBonds: peptideBonds };
     
-    // Кнопки
+    // Кнопки управления
     setTimeout(function() {
         if (!document.getElementById('btn-cartoon')) {
             var cc = document.createElement('div');
