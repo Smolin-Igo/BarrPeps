@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Sequence Alignment - BarrPeps Database</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        .align-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .input-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .input-section h3 {
+            color: #2c5282;
+            margin-bottom: 1rem;
+        }
+        
+        .input-section textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+        
+        .input-section textarea:focus {
+            outline: none;
+            border-color: #4299e1;
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        
+        .input-row .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        
+        .input-row label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #4a5568;
+            text-transform: uppercase;
+        }
+        
+        .input-row select, .input-row input {
+            padding: 0.5rem 0.7rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+        
+        .btn-align {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .btn-align:hover {
+            background: #3182ce;
+        }
+        
+        .btn-align:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+        
+        .results-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .results-section h3 {
+            color: #2c5282;
+            margin-bottom: 0.5rem;
+        }
+        
+        .results-count {
+            color: #718096;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+        
+        .alignment-card {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.2rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s;
+        }
+        
+        .alignment-card:hover {
+            border-color: #4299e1;
+            box-shadow: 0 2px 8px rgba(66,153,225,0.1);
+        }
+        
+        .alignment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.8rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .alignment-header h4 {
+            margin: 0;
+            color: #2c5282;
+            font-size: 1rem;
+        }
+        
+        .alignment-header h4 a {
+            text-decoration: none;
+            color: #2c5282;
+        }
+        
+        .alignment-header h4 a:hover {
+            color: #4299e1;
+        }
+        
+        .score-badge {
+            display: inline-block;
+            padding: 0.25rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        
+        .score-high {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .score-medium {
+            background: #feebc8;
+            color: #7b341e;
+        }
+        
+        .score-low {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+        
+        .stats-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 0.8rem;
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+            color: #4a5568;
+        }
+        
+        .stats-row span {
+            white-space: nowrap;
+        }
+        
+        .alignment-view {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.8;
+            background: #edf2f7;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre;
+        }
+        
+        .alignment-view .match {
+            color: #2c5282;
+            background: rgba(66,153,225,0.15);
+        }
+        
+        .alignment-view .mismatch {
+            color: #e53e3e;
+        }
+        
+        .alignment-view .gap {
+            color: #a0aec0;
+        }
+        
+        .alignment-view .similar {
+            color: #d69e2e;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 2rem;
+            color: #718096;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            border: 3px solid #edf2f7;
+            border-top: 3px solid #4299e1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+            color: #4a5568;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        
+        .legend-color.match-bg { background: rgba(66,153,225,0.15); }
+        .legend-color.similar-bg { color: #d69e2e; font-weight: bold; }
+        .legend-color.mismatch-bg { color: #e53e3e; font-weight: bold; }
+        .legend-color.gap-bg { color: #a0aec0; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand" style="text-decoration: none;">
+                <h1>BarrPeps</h1>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </a>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+                <a href="align.html" class="active">Alignment</a>
+                <a href="submit.html">Submit Data</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="page-header">
+            <h1>Sequence Alignment</h1>
+            <p>Align your peptide sequence against the BarrPeps database to find similar peptides</p>
+        </div>
+
+        <div class="align-container">
+            <!-- Input Section -->
+            <div class="input-section">
+                <h3>Input Sequence</h3>
+                <textarea id="querySequence" placeholder="Enter amino acid sequence (1-letter code)...&#10;Example: TFFYGGSRGKRNNFKTEEY"></textarea>
+                
+                <div class="input-row">
+                    <div class="form-group">
+                        <label>Min Identity (%)</label>
+                        <input type="number" id="minIdentity" value="30" min="0" max="100" style="width:80px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Results</label>
+                        <select id="maxResults">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Gap Penalty</label>
+                        <select id="gapPenalty">
+                            <option value="-1">Low (-1)</option>
+                            <option value="-2" selected>Medium (-2)</option>
+                            <option value="-3">High (-3)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Match Score</label>
+                        <select id="matchScore">
+                            <option value="2">2</option>
+                            <option value="1">1</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                    <button class="btn-align" onclick="runAlignment()" id="alignBtn">Run Alignment</button>
+                    <button class="btn-secondary" onclick="clearAll()" style="padding:0.6rem 1.5rem;">Clear</button>
+                </div>
+                
+                <div style="margin-top:0.8rem; font-size:0.7rem; color:#718096;">
+                    <strong>Note:</strong> Only standard 20 amino acids are accepted. Non-standard characters will be ignored.
+                </div>
+            </div>
+            
+            <!-- Results Section -->
+            <div class="results-section" id="resultsSection" style="display:none;">
+                <h3>Alignment Results</h3>
+                <div class="results-count" id="resultsCount"></div>
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-color match-bg"></div> Exact match</div>
+                    <div class="legend-item"><span class="legend-color similar-bg">+</span> Similar (positive BLOSUM)</div>
+                    <div class="legend-item"><span class="legend-color mismatch-bg">x</span> Mismatch</div>
+                    <div class="legend-item"><span class="legend-color gap-bg">-</span> Gap</div>
+                </div>
+                <div id="alignResults"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>BarrPeps Database</h3>
+                <p>Blood-Brain Barrier Penetrating Peptides</p>
+            </div>
+            <div class="footer-section">
+                <h3>Quick Links</h3>
+                <a href="index.html">Home</a>
+                <a href="browse.html">Browse Database</a>
+                <a href="align.html">Alignment</a>
+                <a href="submit.html">Submit Data</a>
+            </div>
+            <div class="footer-section">
+                <h3>Data Sources</h3>
+                <p>Curated from peer-reviewed literature</p>
+                <p>Last updated: May 2026</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 BarrPeps Database. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="align.js"></script>
+</body>
+</html>
