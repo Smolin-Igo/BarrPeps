@@ -347,7 +347,7 @@ function displayResults(results, query) {
         
         // Alignment строка (палочки)
         html += '<div style="font-family:\'Courier New\',monospace;font-size:0.8rem;line-height:1.4;white-space:nowrap;">';
-        html += '<span style="color:#718096;">      </span>';
+        html += '<span style="color:#718096;">Align </span>';
         html += '<span style="color:#a0aec0;">' + '·'.repeat(aln.targetStart) + '</span>';
         html += alignHtml;
         html += '<span style="color:#a0aec0;">' + '·'.repeat(fullSeq.length - aln.targetEnd) + '</span>';
