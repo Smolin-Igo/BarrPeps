@@ -659,17 +659,6 @@ for (var i = 0; i < 100; i++) {
         pdbViewer.render();
     }, 150);
     
-    setTimeout(function() {
-        for (var i = 0; i < bonds.length; i++) {
-            pdbViewer.addArrow({
-                start: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z},
-                end: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z},
-                radius: 0.12, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-            });
-        }
-        pdbViewer.render();
-    }, 300);
-    
     var oldHover = document.getElementById('atomHoverPopup');
     if (oldHover) oldHover.remove();
     
@@ -753,6 +742,7 @@ function setRepresentation(type) {
     var bonds = info.peptideBonds || [];
     
     if (type === 'cartoon') {
+        // Rainbow раскраска ТОЛЬКО в cartoon
         if (peptideInfo && peptideInfo.residues.length > 0) {
             pdbViewer.setStyle({}, { cartoon: { color: 0x445566, opacity: 0.45 } });
             for (var i = 0; i < peptideInfo.residues.length; i++) {
@@ -764,31 +754,33 @@ function setRepresentation(type) {
         } else {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
-        // В cartoon НЕ показываем дисульфидные связи
+        // В cartoon НИЧЕГО не показываем: ни сфер, ни стрелок
+        
     } else {
-        if (peptideInfo && peptideInfo.residues.length > 0) {
-            pdbViewer.setStyle({}, { stick: { color: 0x445566, radius: 0.06 }, sphere: { color: 0x445566, scale: 0.12 } });
-            for (var i = 0; i < peptideInfo.residues.length; i++) {
-                pdbViewer.addStyle(
-                    { chain: peptideInfo.chain, resi: peptideInfo.residues[i].resSeq },
-                    { stick: { color: getRainbowColor(i, peptideInfo.residues.length), radius: 0.12 }, sphere: { color: getRainbowColor(i, peptideInfo.residues.length), scale: 0.25 } }
-                );
-            }
-        } else {
-            pdbViewer.setStyle({}, { stick: { colorscheme: 'elem', radius: 0.12 }, sphere: { colorscheme: 'elem', scale: 0.25 } });
-        }
-        // В ballAndStick показываем дисульфидные связи
+        // Ball & Stick — НЕЙТРАЛЬНАЯ раскраска elements
+        pdbViewer.setStyle({}, { 
+            stick: { colorscheme: 'elem', radius: 0.12 }, 
+            sphere: { colorscheme: 'elem', scale: 0.25 } 
+        });
+        
+        // Сферы на атомах серы для дисульфидных связей
         for (var i = 0; i < bonds.length; i++) {
-            pdbViewer.addSphere({ center: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z}, radius: 0.5, color: 0xffcc00 });
-            pdbViewer.addSphere({ center: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z}, radius: 0.5, color: 0xffcc00 });
+            pdbViewer.addSphere({ 
+                center: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z}, 
+                radius: 0.5, color: 0xffcc00 
+            });
+            pdbViewer.addSphere({ 
+                center: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z}, 
+                radius: 0.5, color: 0xffcc00 
+            });
         }
     }
     
     pdbViewer.zoomTo();
     
-    setTimeout(function() {
-        // Стрелки только в ballAndStick
-        if (type !== 'cartoon') {
+    // Стрелки ТОЛЬКО в ballAndStick
+    if (type !== 'cartoon') {
+        setTimeout(function() {
             for (var i = 0; i < bonds.length; i++) {
                 pdbViewer.addArrow({
                     start: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z},
@@ -796,9 +788,11 @@ function setRepresentation(type) {
                     radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
                 });
             }
-        }
+            pdbViewer.render();
+        }, 100);
+    } else {
         pdbViewer.render();
-    }, 100);
+    }
     
     var cb = document.getElementById('btn-cartoon');
     var bb = document.getElementById('btn-ballstick');
