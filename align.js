@@ -37,111 +37,15 @@ function loadExcelFile() {
             var workbook = XLSX.read(arrayBuffer, { type: 'array' });
             var sheet = workbook.Sheets['peptides'];
             if (sheet) {
-                peptidesData = XLSX.utils.sheet_to_json(sheet);
+                peptidesData = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
                 peptidesLoaded = true;
-                console.log('Loaded', peptidesData.length, 'peptides for alignment');
+                console.log('Loaded', peptidesData.length, 'peptides');
                 document.getElementById('alignBtn').disabled = false;
             }
         })
         .catch(function(error) {
-            console.error('Error loading data:', error);
+            console.error('Error:', error);
         });
-}
-
-// Smith-Waterman local alignment
-function smithWaterman(query, target, matchScore, gapPenalty) {
-    var m = query.length;
-    var n = target.length;
-    
-    // Score matrix
-    var score = [];
-    for (var i = 0; i <= m; i++) {
-        score[i] = [];
-        for (var j = 0; j <= n; j++) {
-            score[i][j] = 0;
-        }
-    }
-    
-    var maxScore = 0;
-    var maxI = 0;
-    var maxJ = 0;
-    
-    // Fill matrix
-    for (var i = 1; i <= m; i++) {
-        for (var j = 1; j <= n; j++) {
-            var match = getBLOSUMScore(query[i-1], target[j-1]);
-            var diag = score[i-1][j-1] + (match > 0 ? matchScore : (match < 0 ? gapPenalty : 0));
-            var up = score[i-1][j] + gapPenalty;
-            var left = score[i][j-1] + gapPenalty;
-            
-            score[i][j] = Math.max(0, diag, up, left);
-            
-            if (score[i][j] > maxScore) {
-                maxScore = score[i][j];
-                maxI = i;
-                maxJ = j;
-            }
-        }
-    }
-    
-    // Traceback
-    var align1 = '';
-    var align2 = '';
-    var alignment = '';
-    var i = maxI;
-    var j = maxJ;
-    var identities = 0;
-    var positives = 0;
-    var alignmentLength = 0;
-    
-    while (i > 0 && j > 0 && score[i][j] > 0) {
-        var match = getBLOSUMScore(query[i-1], target[j-1]);
-        var diag = score[i-1][j-1] + (match > 0 ? matchScore : (match < 0 ? gapPenalty : 0));
-        
-        if (score[i][j] === diag) {
-            align1 = query[i-1] + align1;
-            align2 = target[j-1] + align2;
-            
-            if (query[i-1] === target[j-1]) {
-                alignment = '|' + alignment;
-                identities++;
-                positives++;
-            } else if (match > 0) {
-                alignment = '+' + alignment;
-                positives++;
-            } else {
-                alignment = ' ' + alignment;
-            }
-            
-            i--; j--;
-            alignmentLength++;
-        } else if (score[i][j] === score[i-1][j] + gapPenalty) {
-            align1 = query[i-1] + align1;
-            align2 = '-' + align2;
-            alignment = ' ' + alignment;
-            i--;
-            alignmentLength++;
-        } else {
-            align1 = '-' + align1;
-            align2 = target[j-1] + align2;
-            alignment = ' ' + alignment;
-            j--;
-            alignmentLength++;
-        }
-    }
-    
-    return {
-        align1: align1,
-        align2: align2,
-        alignment: alignment,
-        score: maxScore,
-        identities: identities,
-        positives: positives,
-        length: alignmentLength,
-        identityPercent: alignmentLength > 0 ? (identities / alignmentLength * 100) : 0,
-        queryStart: i,
-        targetStart: j
-    };
 }
 
 function getBLOSUMScore(aa1, aa2) {
@@ -159,69 +63,184 @@ function sanitizeSequence(seq) {
     }).join('');
 }
 
+function smithWaterman(query, target, matchScore, gapPenalty) {
+    var m = query.length;
+    var n = target.length;
+    
+    var score = [];
+    for (var i = 0; i <= m; i++) {
+        score[i] = [];
+        for (var j = 0; j <= n; j++) {
+            score[i][j] = 0;
+        }
+    }
+    
+    var maxScore = 0;
+    var maxI = 0;
+    var maxJ = 0;
+    
+    for (var i = 1; i <= m; i++) {
+        for (var j = 1; j <= n; j++) {
+            var blosum = getBLOSUMScore(query[i-1], target[j-1]);
+            var match = blosum > 0 ? matchScore : (blosum < 0 ? blosum : 0);
+            var diag = score[i-1][j-1] + match;
+            var up = score[i-1][j] + gapPenalty;
+            var left = score[i][j-1] + gapPenalty;
+            
+            score[i][j] = Math.max(0, diag, up, left);
+            
+            if (score[i][j] > maxScore) {
+                maxScore = score[i][j];
+                maxI = i;
+                maxJ = j;
+            }
+        }
+    }
+    
+    var align1 = '';
+    var align2 = '';
+    var alignment = '';
+    var i = maxI;
+    var j = maxJ;
+    var identities = 0;
+    var positives = 0;
+    var gaps = 0;
+    
+    while (i > 0 && j > 0 && score[i][j] > 0) {
+        var blosum = getBLOSUMScore(query[i-1], target[j-1]);
+        var match = blosum > 0 ? matchScore : (blosum < 0 ? blosum : 0);
+        
+        if (score[i][j] === score[i-1][j-1] + match) {
+            align1 = query[i-1] + align1;
+            align2 = target[j-1] + align2;
+            if (query[i-1] === target[j-1]) {
+                alignment = '|' + alignment;
+                identities++;
+                positives++;
+            } else if (blosum > 0) {
+                alignment = '.' + alignment;
+                positives++;
+            } else {
+                alignment = ' ' + alignment;
+            }
+            i--; j--;
+        } else if (i > 0 && score[i][j] === score[i-1][j] + gapPenalty) {
+            align1 = query[i-1] + align1;
+            align2 = '-' + align2;
+            alignment = ' ' + alignment;
+            gaps++;
+            i--;
+        } else {
+            align1 = '-' + align1;
+            align2 = target[j-1] + align2;
+            alignment = ' ' + alignment;
+            gaps++;
+            j--;
+        }
+    }
+    
+    var alnLen = align1.length;
+    
+    return {
+        queryAligned: align1,
+        targetAligned: align2,
+        alignment: alignment,
+        score: maxScore,
+        identities: identities,
+        positives: positives,
+        gaps: gaps,
+        length: alnLen,
+        identityPercent: alnLen > 0 ? (identities / alnLen * 100) : 0,
+        positivePercent: alnLen > 0 ? (positives / alnLen * 100) : 0,
+        queryStart: i,
+        queryEnd: maxI,
+        targetStart: j,
+        targetEnd: maxJ,
+        fullTarget: target
+    };
+}
+
+function formatAlignmentLine(text, label) {
+    var chunks = [];
+    for (var i = 0; i < text.length; i += 60) {
+        var chunk = text.substring(i, i + 60);
+        var prefix = (i === 0 ? label : ' '.repeat(label.length));
+        chunks.push(prefix + chunk);
+    }
+    return chunks.join('\n');
+}
+
+function highlightAlignment(line, type) {
+    var result = '';
+    for (var i = 0; i < line.length; i++) {
+        var c = line[i];
+        if (type === 'query') {
+            result += '<span class="aa-q">' + c + '</span>';
+        } else if (type === 'target') {
+            result += '<span class="aa-t">' + c + '</span>';
+        } else if (type === 'align') {
+            if (c === '|') result += '<span class="match">|</span>';
+            else if (c === '.') result += '<span class="similar">.</span>';
+            else result += '<span class="gap"> </span>';
+        }
+    }
+    return result;
+}
+
 function runAlignment() {
     if (!peptidesLoaded) {
-        alert('Database is still loading. Please wait.');
+        alert('Database loading, please wait.');
         return;
     }
     
-    var query = sanitizeSequence(document.getElementById('querySequence').value);
-    var minIdentity = parseInt(document.getElementById('minIdentity').value) || 30;
+    var rawQuery = document.getElementById('querySequence').value;
+    var query = sanitizeSequence(rawQuery);
+    var minIdentity = parseFloat(document.getElementById('minIdentity').value) || 30;
     var maxResults = parseInt(document.getElementById('maxResults').value) || 20;
     var gapPenalty = parseInt(document.getElementById('gapPenalty').value) || -2;
-    var matchScore = parseInt(document.getElementById('matchScore').value) || 2;
+    var matchScore = parseInt(document.getElementById('matchScore').value) || 1;
     
     if (!query || query.length < 3) {
-        alert('Please enter a sequence of at least 3 amino acids.');
+        alert('Enter at least 3 amino acids.');
         return;
     }
     
     document.getElementById('resultsSection').style.display = 'block';
-    document.getElementById('alignResults').innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Running alignment...</div>';
+    document.getElementById('alignResults').innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Aligning...</div>';
     
-    // Run alignment in setTimeout to avoid blocking UI
     setTimeout(function() {
         var results = [];
         
         for (var i = 0; i < peptidesData.length; i++) {
             var p = peptidesData[i];
-            var target = p['sequence_1_clean'] || p['sequence_1'] || '';
-            target = sanitizeSequence(target);
+            var cleanSeq = p['sequence_1_clean'] || p['sequence_1'] || '';
+            var target = sanitizeSequence(cleanSeq);
             
             if (!target || target.length < 3) continue;
             
-            var alignment = smithWaterman(query, target, matchScore, gapPenalty);
+            var aln = smithWaterman(query, target, matchScore, gapPenalty);
             
-            if (alignment.identityPercent >= minIdentity && alignment.length >= 3) {
-                results.push({
-                    peptide: p,
-                    alignment: alignment
-                });
+            if (aln.identityPercent >= minIdentity && aln.length >= Math.min(query.length * 0.3, 5)) {
+                results.push({ peptide: p, alignment: aln });
             }
         }
         
-        // Sort by identity percent (desc)
-        results.sort(function(a, b) {
-            return b.alignment.identityPercent - a.alignment.identityPercent;
-        });
-        
-        // Limit results
+        results.sort(function(a, b) { return b.alignment.identityPercent - a.alignment.identityPercent; });
         results = results.slice(0, maxResults);
-        
         displayResults(results, query);
-    }, 100);
+    }, 150);
 }
 
 function displayResults(results, query) {
     var container = document.getElementById('alignResults');
     
-    if (results.length === 0) {
-        container.innerHTML = '<div class="no-results"><p>No matching sequences found with the specified criteria.</p><p style="font-size:0.8rem;">Try lowering the minimum identity threshold.</p></div>';
+    if (!results.length) {
+        container.innerHTML = '<div class="no-results"><p>No matches found.</p><p style="font-size:0.8rem;">Try lowering the minimum identity or using a shorter query.</p></div>';
         document.getElementById('resultsCount').textContent = 'No results';
         return;
     }
     
-    document.getElementById('resultsCount').textContent = 'Found ' + results.length + ' matching peptide(s)';
+    document.getElementById('resultsCount').textContent = 'Found ' + results.length + ' match(es) for query (' + query.length + ' aa)';
     
     var html = '';
     
@@ -230,31 +249,50 @@ function displayResults(results, query) {
         var p = r.peptide;
         var aln = r.alignment;
         var name = p['trivial_name'] || 'Peptide ' + p['peptide_id'];
-        var peptideId = p['peptide_id'];
+        var pid = p['peptide_id'];
         
-        var scoreClass = aln.identityPercent >= 80 ? 'score-high' : (aln.identityPercent >= 50 ? 'score-medium' : 'score-low');
+        var sc = aln.identityPercent >= 80 ? 'score-high' : (aln.identityPercent >= 50 ? 'score-medium' : 'score-low');
         
         html += '<div class="alignment-card">';
         html += '<div class="alignment-header">';
-        html += '<h4><a href="peptide.html?id=' + peptideId + '&name=' + encodeURIComponent(name) + '">' + name + '</a></h4>';
-        html += '<div>';
-        html += '<span class="score-badge ' + scoreClass + '">' + aln.identityPercent.toFixed(1) + '% identity</span>';
-        html += '</div></div>';
+        html += '<h4><a href="peptide.html?id=' + pid + '&name=' + encodeURIComponent(name) + '" target="_blank">' + name + '</a></h4>';
+        html += '<span class="score-badge ' + sc + '">' + aln.identityPercent.toFixed(1) + '% identity</span>';
+        html += '</div>';
         
         html += '<div class="stats-row">';
         html += '<span><strong>Score:</strong> ' + aln.score + '</span>';
-        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + '</span>';
-        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + '</span>';
-        html += '<span><strong>Gaps:</strong> ' + (aln.length - aln.identities - (aln.length - aln.positives)) + '</span>';
-        html += '<span><strong>Length:</strong> ' + (p['length'] || 'N/A') + ' aa</span>';
+        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + ' (' + aln.identityPercent.toFixed(1) + '%)</span>';
+        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + ' (' + aln.positivePercent.toFixed(1) + '%)</span>';
+        html += '<span><strong>Gaps:</strong> ' + aln.gaps + '</span>';
+        html += '<span><strong>Full length:</strong> ' + (p['length'] || aln.fullTarget.length) + ' aa</span>';
         html += '</div>';
         
-        // Format alignment
-        html += '<div class="alignment-view">';
-        html += 'Query  ' + formatAlignmentLine(aln.align1) + '\n';
-        html += '      ' + formatAlignmentLine(aln.alignment) + '\n';
-        html += 'Sbjct  ' + formatAlignmentLine(aln.align2);
+        // Full target sequence
+        html += '<div style="margin-bottom:0.5rem; font-size:0.75rem; color:#718096;">';
+        html += '<strong>Full sequence:</strong> <span style="font-family:monospace; word-break:break-all;">' + aln.fullTarget + '</span>';
         html += '</div>';
+        
+        // Alignment display
+        var qLabel = 'Query  ';
+        var aLabel = '      ';
+        var tLabel = 'Sbjct ';
+        
+        var qLen = qLabel.length;
+        
+        for (var k = 0; k < aln.length; k += 60) {
+            var qChunk = aln.queryAligned.substring(k, k + 60);
+            var aChunk = aln.alignment.substring(k, k + 60);
+            var tChunk = aln.targetAligned.substring(k, k + 60);
+            
+            var prefix = k === 0 ? '' : '      ';
+            html += '<div class="alignment-view" style="margin-bottom:0;">';
+            html += '<pre style="margin:0;line-height:1.4;">';
+            html += '<span style="color:#2c5282;font-weight:600;">' + (k === 0 ? 'Query' : '     ') + '</span>  ' + qChunk + '\n';
+            html += '       ' + aChunk.replace(/\|/g, '<span style="color:#276749;">|</span>').replace(/\./g, '<span style="color:#d69e2e;">.</span>') + '\n';
+            html += '<span style="color:#c05621;font-weight:600;">' + (k === 0 ? 'Sbjct' : '     ') + '</span>  ' + tChunk;
+            html += '</pre>';
+            html += '</div>';
+        }
         
         html += '</div>';
     }
@@ -262,34 +300,16 @@ function displayResults(results, query) {
     container.innerHTML = html;
 }
 
-function formatAlignmentLine(line) {
-    var result = '';
-    for (var i = 0; i < line.length; i++) {
-        result += line[i];
-        if ((i + 1) % 60 === 0 && i < line.length - 1) {
-            result += '\n       ';
-        }
-    }
-    return result;
-}
-
 function clearAll() {
     document.getElementById('querySequence').value = '';
     document.getElementById('resultsSection').style.display = 'none';
-    document.getElementById('alignResults').innerHTML = '';
 }
 
-// Initialize
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('alignBtn').disabled = true;
-    if (typeof XLSX !== 'undefined') {
-        loadExcelFile();
-    }
+    if (typeof XLSX !== 'undefined') loadExcelFile();
     
-    // Enter key triggers alignment
     document.getElementById('querySequence').addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            runAlignment();
-        }
+        if (e.ctrlKey && e.key === 'Enter') runAlignment();
     });
 });

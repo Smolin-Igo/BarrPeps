@@ -288,57 +288,57 @@
         <div class="align-container">
             <!-- Input Section -->
             <div class="input-section">
-                <h3>Input Sequence</h3>
-                <textarea id="querySequence" placeholder="Enter amino acid sequence (1-letter code)...&#10;Example: TFFYGGSRGKRNNFKTEEY"></textarea>
-                
-                <div class="input-row">
-                    <div class="form-group">
-                        <label>Min Identity (%)</label>
-                        <input type="number" id="minIdentity" value="30" min="0" max="100" style="width:80px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Max Results</label>
-                        <select id="maxResults">
-                            <option value="10">10</option>
-                            <option value="20" selected>20</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Gap Penalty</label>
-                        <select id="gapPenalty">
-                            <option value="-1">Low (-1)</option>
-                            <option value="-2" selected>Medium (-2)</option>
-                            <option value="-3">High (-3)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Match Score</label>
-                        <select id="matchScore">
-                            <option value="2">2</option>
-                            <option value="1">1</option>
-                            <option value="3">3</option>
-                        </select>
-                    </div>
-                    <button class="btn-align" onclick="runAlignment()" id="alignBtn">Run Alignment</button>
-                    <button class="btn-secondary" onclick="clearAll()" style="padding:0.6rem 1.5rem;">Clear</button>
-                </div>
-                
-                <div style="margin-top:0.8rem; font-size:0.7rem; color:#718096;">
-                    <strong>Note:</strong> Only standard 20 amino acids are accepted. Non-standard characters will be ignored.
-                </div>
-            </div>
+    <h3>Input Sequence</h3>
+    <textarea id="querySequence" placeholder="Enter amino acid sequence (1-letter code)...&#10;Example: TFFYGGSRGKRNNFKTEEY"></textarea>
+    
+    <div class="input-row">
+        <div class="form-group">
+            <label title="Only show alignments with at least this percentage of identical amino acids">Min Identity (%)</label>
+            <input type="number" id="minIdentity" value="30" min="0" max="100" style="width:80px;" title="Filter: minimum percentage of exact matches required">
+        </div>
+        <div class="form-group">
+            <label title="Maximum number of results to display">Max Results</label>
+            <select id="maxResults" title="Limit the number of alignment results shown">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label title="Penalty for opening a gap in the alignment. More negative = fewer gaps allowed.">Gap Penalty</label>
+            <select id="gapPenalty" title="Penalty score for introducing gaps. More negative values discourage gaps.">
+                <option value="-1">Low (-1)</option>
+                <option value="-2" selected>Medium (-2)</option>
+                <option value="-3">High (-3)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label title="Score awarded for matching amino acids (positive BLOSUM score)">Match Score</label>
+            <select id="matchScore" title="Score for a positive BLOSUM match. Higher values favor conservative substitutions.">
+                <option value="1" selected>Normal (1)</option>
+                <option value="2">High (2)</option>
+                <option value="3">Very High (3)</option>
+            </select>
+        </div>
+        <button class="btn-align" onclick="runAlignment()" id="alignBtn">Run Alignment</button>
+        <button class="btn-secondary" onclick="clearAll()" style="padding:0.6rem 1.5rem;">Clear</button>
+    </div>
+    
+    <div style="margin-top:0.8rem; font-size:0.7rem; color:#718096;">
+        <strong>Note:</strong> Only standard 20 amino acids are accepted. Uses Smith-Waterman local alignment with BLOSUM62 substitution matrix. <strong>Ctrl+Enter</strong> to run.
+    </div>
+</div>
             
             <!-- Results Section -->
             <div class="results-section" id="resultsSection" style="display:none;">
                 <h3>Alignment Results</h3>
                 <div class="results-count" id="resultsCount"></div>
                 <div class="legend">
-                    <div class="legend-item"><div class="legend-color match-bg"></div> Exact match</div>
-                    <div class="legend-item"><span class="legend-color similar-bg">+</span> Similar (positive BLOSUM)</div>
-                    <div class="legend-item"><span class="legend-color mismatch-bg">x</span> Mismatch</div>
-                    <div class="legend-item"><span class="legend-color gap-bg">-</span> Gap</div>
+    <div class="legend-item"><span style="color:#276749;font-weight:bold;font-family:monospace;">|</span> Exact match</div>
+    <div class="legend-item"><span style="color:#d69e2e;font-weight:bold;font-family:monospace;">.</span> Similar (positive BLOSUM)</div>
+    <div class="legend-item"><span style="color:#a0aec0;font-family:monospace;">&nbsp;</span> Mismatch / gap</div>
+</div>
                 </div>
                 <div id="alignResults"></div>
             </div>
