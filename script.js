@@ -643,11 +643,6 @@ for (var i = 0; i < 100; i++) {
         pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
     }
     
-    for (var i = 0; i < bonds.length; i++) {
-        pdbViewer.addSphere({ center: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z}, radius: 0.4, color: 0xffcc00 });
-        pdbViewer.addSphere({ center: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z}, radius: 0.4, color: 0xffcc00 });
-    }
-    
     pdbViewer.zoomTo();
     pdbViewer.render();
     
@@ -769,10 +764,7 @@ function setRepresentation(type) {
         } else {
             pdbViewer.setStyle({}, { cartoon: { colorscheme: 'ss', opacity: 0.85 } });
         }
-        for (var i = 0; i < bonds.length; i++) {
-            pdbViewer.addSphere({ center: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z}, radius: 0.4, color: 0xffcc00 });
-            pdbViewer.addSphere({ center: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z}, radius: 0.4, color: 0xffcc00 });
-        }
+        // В cartoon НЕ показываем дисульфидные связи
     } else {
         if (peptideInfo && peptideInfo.residues.length > 0) {
             pdbViewer.setStyle({}, { stick: { color: 0x445566, radius: 0.06 }, sphere: { color: 0x445566, scale: 0.12 } });
@@ -785,6 +777,7 @@ function setRepresentation(type) {
         } else {
             pdbViewer.setStyle({}, { stick: { colorscheme: 'elem', radius: 0.12 }, sphere: { colorscheme: 'elem', scale: 0.25 } });
         }
+        // В ballAndStick показываем дисульфидные связи
         for (var i = 0; i < bonds.length; i++) {
             pdbViewer.addSphere({ center: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z}, radius: 0.5, color: 0xffcc00 });
             pdbViewer.addSphere({ center: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z}, radius: 0.5, color: 0xffcc00 });
@@ -794,12 +787,15 @@ function setRepresentation(type) {
     pdbViewer.zoomTo();
     
     setTimeout(function() {
-        for (var i = 0; i < bonds.length; i++) {
-            pdbViewer.addArrow({
-                start: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z},
-                end: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z},
-                radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
-            });
+        // Стрелки только в ballAndStick
+        if (type !== 'cartoon') {
+            for (var i = 0; i < bonds.length; i++) {
+                pdbViewer.addArrow({
+                    start: {x:bonds[i].atom1.x, y:bonds[i].atom1.y, z:bonds[i].atom1.z},
+                    end: {x:bonds[i].atom2.x, y:bonds[i].atom2.y, z:bonds[i].atom2.z},
+                    radius: 0.15, radiusRatio: 1.0, color: 0xff8800, alpha: 0.9
+                });
+            }
         }
         pdbViewer.render();
     }, 100);
@@ -1228,8 +1224,6 @@ function displayPeptideDetail(peptide, pdbContents, pdbIds) {
         var selH = validStructures.length > 1 ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;"><h3 style="font-size:0.9rem;margin:0;">3D Structure</h3><select id="pdbSelector" onchange="switchPDB(this.value)">' + validStructures.map(function(s, i) { return '<option value="' + i + '"' + (i === 0 ? ' selected' : '') + '>' + s.id + '</option>'; }).join('') + '</select></div>' : '<h3 style="font-size:0.9rem;margin-bottom:0.6rem;">3D Structure - PDB: ' + validStructures[0].id + '</h3>';
         html += '<div class="structure-viewer">' + selH + '<div id="structure-viewer-pdb" class="structure-container"></div><div class="structure-legend"><div class="legend-item"><div class="legend-color carbon"></div><span>Carbon</span></div><div class="legend-item"><div class="legend-color oxygen"></div><span>Oxygen</span></div><div class="legend-item"><div class="legend-color nitrogen"></div><span>Nitrogen</span></div><div class="legend-item"><div class="legend-color sulfur"></div><span>Sulfur</span></div><div class="legend-item"><div class="legend-color disulfide"></div><span>Disulfide</span></div></div><div class="pdb-info"><strong>PDB: <span id="currentPdbId">' + validStructures[0].id + '</span></strong> | <a href="https://www.rcsb.org/structure/' + validStructures[0].id + '" target="_blank" id="rcsbLink">RCSB</a></div></div>';
         window.pdbStructures = validStructures;
-    } else {
-        html += '<div class="structure-viewer"><h3>3D Structure</h3><div class="no-structure"><p>No PDB structure available.</p></div></div>';
     }
     
     html += '<div class="detail-section"><h3>Basic Information</h3>' +
