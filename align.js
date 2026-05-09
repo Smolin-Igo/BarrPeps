@@ -144,7 +144,100 @@ function smithWaterman(query, target, matchScore, gapPenalty) {
     return {
         queryAligned: align1,
         targetAligned: align2,
-        alignment: alignment,
+        alignment: alifunction smithWaterman(query, target, matchScore, gapPenalty) {
+    var m = query.length;
+    var n = target.length;
+    
+    var score = [];
+    var traceback = [];
+    for (var i = 0; i <= m; i++) {
+        score[i] = [];
+        traceback[i] = [];
+        for (var j = 0; j <= n; j++) {
+            score[i][j] = 0;
+            traceback[i][j] = 0;
+        }
+    }
+    
+    var maxScore = 0;
+    var maxI = 0;
+    var maxJ = 0;
+    
+    for (var i = 1; i <= m; i++) {
+        for (var j = 1; j <= n; j++) {
+            var blosum = getBLOSUMScore(query[i-1], target[j-1]);
+            var match = blosum > 0 ? matchScore * (blosum > 2 ? 2 : 1) : blosum;
+            var diag = score[i-1][j-1] + match;
+            var up = score[i-1][j] + gapPenalty;
+            var left = score[i][j-1] + gapPenalty;
+            
+            score[i][j] = Math.max(0, diag, up, left);
+            
+            if (score[i][j] > maxScore) {
+                maxScore = score[i][j];
+                maxI = i;
+                maxJ = j;
+            }
+        }
+    }
+    
+    // Traceback
+    var qAln = '';
+    var tAln = '';
+    var aln = '';
+    var i = maxI;
+    var j = maxJ;
+    var ident = 0;
+    var posit = 0;
+    var gps = 0;
+    
+    while (i > 0 && j > 0 && score[i][j] > 0) {
+        var blosum = getBLOSUMScore(query[i-1], target[j-1]);
+        var match = blosum > 0 ? matchScore * (blosum > 2 ? 2 : 1) : blosum;
+        
+        if (score[i][j] === score[i-1][j-1] + match) {
+            qAln = query[i-1] + qAln;
+            tAln = target[j-1] + tAln;
+            if (query[i-1] === target[j-1]) { aln = '|' + aln; ident++; posit++; }
+            else if (blosum > 0) { aln = '.' + aln; posit++; }
+            else { aln = ' ' + aln; }
+            i--; j--;
+        } else if (score[i][j] === score[i-1][j] + gapPenalty) {
+            qAln = query[i-1] + qAln;
+            tAln = '-' + tAln;
+            aln = ' ' + aln;
+            gps++; i--;
+        } else {
+            qAln = '-' + qAln;
+            tAln = target[j-1] + tAln;
+            aln = ' ' + aln;
+            gps++; j--;
+        }
+    }
+    
+    var alnLen = qAln.length;
+    var queryCoverage = query.length > 0 ? (alnLen / query.length * 100) : 0;
+    
+    return {
+        queryAligned: qAln,
+        targetAligned: tAln,
+        alignment: aln,
+        score: maxScore,
+        identities: ident,
+        positives: posit,
+        gaps: gps,
+        length: alnLen,
+        identityPercent: alnLen > 0 ? (ident / alnLen * 100) : 0,
+        positivePercent: alnLen > 0 ? (posit / alnLen * 100) : 0,
+        queryCoverage: queryCoverage,
+        combinedScore: maxScore * (queryCoverage / 100),
+        queryStart: i,
+        queryEnd: maxI,
+        targetStart: j,
+        targetEnd: maxJ,
+        fullTarget: target
+    };
+}gnment,
         score: maxScore,
         identities: identities,
         positives: positives,
@@ -206,7 +299,7 @@ function runAlignment() {
     }
     
     document.getElementById('resultsSection').style.display = 'block';
-    document.getElementById('alignResults').innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Aligning...</div>';
+    document.getElementById('alignResults').innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Aligning ' + query.length + ' aa against ' + peptidesData.length + ' peptides...</div>';
     
     setTimeout(function() {
         var results = [];
@@ -216,81 +309,84 @@ function runAlignment() {
             var cleanSeq = p['sequence_1_clean'] || p['sequence_1'] || '';
             var target = sanitizeSequence(cleanSeq);
             
-            if (!target || target.length < 3) continue;
+            if (!target || target.length < 2) continue;
             
             var aln = smithWaterman(query, target, matchScore, gapPenalty);
             
-            if (aln.identityPercent >= minIdentity && aln.length >= Math.min(query.length * 0.3, 5)) {
-                results.push({ peptide: p, alignment: aln });
+            // Фильтруем: минимум 30% идентичности И покрытие query > 40% ИЛИ покрытие > 60%
+            var minCov = query.length <= 10 ? 40 : 30;
+            if (aln.identityPercent >= minIdentity && aln.queryCoverage >= minCov && aln.length >= 3) {
+                aln.peptide = p;
+                aln.peptideId = p['peptide_id'];
+                aln.peptideName = p['trivial_name'] || 'Peptide ' + p['peptide_id'];
+                results.push(aln);
             }
         }
         
-        results.sort(function(a, b) { return b.alignment.identityPercent - a.alignment.identityPercent; });
+        // Сортируем по комбинированному score (score * coverage)
+        results.sort(function(a, b) {
+            var scoreA = a.score * (a.queryCoverage / 100) * (a.identityPercent / 100);
+            var scoreB = b.score * (b.queryCoverage / 100) * (b.identityPercent / 100);
+            return scoreB - scoreA;
+        });
+        
         results = results.slice(0, maxResults);
         displayResults(results, query);
-    }, 150);
+    }, 50);
 }
 
 function displayResults(results, query) {
     var container = document.getElementById('alignResults');
     
     if (!results.length) {
-        container.innerHTML = '<div class="no-results"><p>No matches found.</p><p style="font-size:0.8rem;">Try lowering the minimum identity or using a shorter query.</p></div>';
-        document.getElementById('resultsCount').textContent = 'No results';
+        container.innerHTML = '<div class="no-results"><p>No significant matches found.</p><p style="font-size:0.8rem;">Try lowering the minimum identity (currently filtering by coverage and identity).</p></div>';
+        document.getElementById('resultsCount').textContent = 'No results for ' + query.length + ' aa query';
         return;
     }
     
-    document.getElementById('resultsCount').textContent = 'Found ' + results.length + ' match(es) for query (' + query.length + ' aa)';
+    document.getElementById('resultsCount').textContent = 'Found ' + results.length + ' match(es) | Query: ' + query.length + ' aa';
     
     var html = '';
     
     for (var i = 0; i < results.length; i++) {
-        var r = results[i];
-        var p = r.peptide;
-        var aln = r.alignment;
-        var name = p['trivial_name'] || 'Peptide ' + p['peptide_id'];
-        var pid = p['peptide_id'];
+        var aln = results[i];
+        var name = aln.peptideName;
+        var pid = aln.peptideId;
         
         var sc = aln.identityPercent >= 80 ? 'score-high' : (aln.identityPercent >= 50 ? 'score-medium' : 'score-low');
+        var covClass = aln.queryCoverage >= 80 ? 'score-high' : (aln.queryCoverage >= 50 ? 'score-medium' : 'score-low');
         
         html += '<div class="alignment-card">';
         html += '<div class="alignment-header">';
         html += '<h4><a href="peptide.html?id=' + pid + '&name=' + encodeURIComponent(name) + '" target="_blank">' + name + '</a></h4>';
+        html += '<div>';
         html += '<span class="score-badge ' + sc + '">' + aln.identityPercent.toFixed(1) + '% identity</span>';
-        html += '</div>';
+        html += '<span class="score-badge ' + covClass + '" style="margin-left:0.3rem;">' + aln.queryCoverage.toFixed(0) + '% coverage</span>';
+        html += '</div></div>';
         
         html += '<div class="stats-row">';
         html += '<span><strong>Score:</strong> ' + aln.score + '</span>';
-        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + ' (' + aln.identityPercent.toFixed(1) + '%)</span>';
-        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + ' (' + aln.positivePercent.toFixed(1) + '%)</span>';
+        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + '</span>';
+        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + '</span>';
         html += '<span><strong>Gaps:</strong> ' + aln.gaps + '</span>';
-        html += '<span><strong>Full length:</strong> ' + (p['length'] || aln.fullTarget.length) + ' aa</span>';
+        html += '<span><strong>Query coverage:</strong> ' + aln.queryCoverage.toFixed(0) + '%</span>';
         html += '</div>';
         
-        // Full target sequence
-        html += '<div style="margin-bottom:0.5rem; font-size:0.75rem; color:#718096;">';
-        html += '<strong>Full sequence:</strong> <span style="font-family:monospace; word-break:break-all;">' + aln.fullTarget + '</span>';
+        // Full sequence
+        html += '<div style="margin-bottom:0.5rem;font-size:0.75rem;color:#718096;">';
+        html += '<strong>Target:</strong> <span style="font-family:monospace;word-break:break-all;">' + aln.fullTarget + '</span>';
         html += '</div>';
         
-        // Alignment display
-        var qLabel = 'Query  ';
-        var aLabel = '      ';
-        var tLabel = 'Sbjct ';
-        
-        var qLen = qLabel.length;
-        
+        // Консенсус
         for (var k = 0; k < aln.length; k += 60) {
             var qChunk = aln.queryAligned.substring(k, k + 60);
             var aChunk = aln.alignment.substring(k, k + 60);
             var tChunk = aln.targetAligned.substring(k, k + 60);
             
-            var prefix = k === 0 ? '' : '      ';
-            html += '<div class="alignment-view" style="margin-bottom:0;">';
-            html += '<pre style="margin:0;line-height:1.4;">';
-            html += '<span style="color:#2c5282;font-weight:600;">' + (k === 0 ? 'Query' : '     ') + '</span>  ' + qChunk + '\n';
-            html += '       ' + aChunk.replace(/\|/g, '<span style="color:#276749;">|</span>').replace(/\./g, '<span style="color:#d69e2e;">.</span>') + '\n';
-            html += '<span style="color:#c05621;font-weight:600;">' + (k === 0 ? 'Sbjct' : '     ') + '</span>  ' + tChunk;
-            html += '</pre>';
+            html += '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.3;background:#f7fafc;padding:0.3rem 0.5rem;overflow-x:auto;">';
+            html += '<span style="color:#2c5282;">Query</span> ' + qChunk + '\n';
+            html += '<span style="color:#718096;">      </span> ' + aChunk.replace(/\|/g, '<span style="color:#276749;">|</span>').replace(/\./g, '<span style="color:#d69e2e;">.</span>') + '\n';
+            html += '<span style="color:#c05621;">Sbjct</span> ' + tChunk;
             html += '</div>';
         }
         
@@ -299,6 +395,7 @@ function displayResults(results, query) {
     
     container.innerHTML = html;
 }
+
 
 function clearAll() {
     document.getElementById('querySequence').value = '';
