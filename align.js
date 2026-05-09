@@ -279,41 +279,39 @@ function displayResults(results, query) {
         html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + '</span>';
         html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + '</span>';
         html += '<span><strong>Gaps:</strong> ' + aln.gaps + '</span>';
-        html += '<span><strong>Length:</strong> ' + aln.fullTarget.length + ' aa</span>';
         html += '</div>';
         
-        // Построение полной последовательности с выделением выровненного участка
+        // Полная последовательность с выравниванием
         var fullSeq = aln.fullTarget;
         var beforeTarget = fullSeq.substring(0, aln.targetStart);
-        var alignedTarget = fullSeq.substring(aln.targetStart, aln.targetEnd);
         var afterTarget = fullSeq.substring(aln.targetEnd);
         
-        // Собираем выровненный участок с цветовыми метками
-        var alignedHtml = '';
+        // Выровненный таргет с цветами
+        var targetHtml = '';
         for (var c = 0; c < aln.targetAligned.length; c++) {
             var tAA = aln.targetAligned[c];
             var qAA = aln.queryAligned[c];
             var mark = aln.alignment[c];
             
             if (tAA === '-' || qAA === '-') {
-                // Gap — показываем тире в соответствующей строке
-                alignedHtml += '<span class="gap-aa">' + (tAA === '-' ? '·' : tAA) + '</span>';
+                targetHtml += '<span class="gap-aa">·</span>';
             } else if (mark === '|') {
-                alignedHtml += '<span class="match-aa">' + tAA + '</span>';
+                targetHtml += '<span class="match-aa">' + tAA + '</span>';
             } else if (mark === '.') {
-                alignedHtml += '<span class="similar-aa">' + tAA + '</span>';
+                targetHtml += '<span class="similar-aa">' + tAA + '</span>';
             } else {
-                alignedHtml += '<span class="mismatch-aa">' + tAA + '</span>';
+                targetHtml += '<span class="mismatch-aa">' + tAA + '</span>';
             }
         }
         
-        // Собираем query с такими же цветами
+        // Query с цветами
         var queryHtml = '';
         for (var c = 0; c < aln.queryAligned.length; c++) {
             var qAA = aln.queryAligned[c];
+            var tAA = aln.targetAligned[c];
             var mark = aln.alignment[c];
             
-            if (qAA === '-') {
+            if (qAA === '-' || tAA === '-') {
                 queryHtml += '<span class="gap-aa">·</span>';
             } else if (mark === '|') {
                 queryHtml += '<span class="match-aa">' + qAA + '</span>';
@@ -324,54 +322,46 @@ function displayResults(results, query) {
             }
         }
         
-        // Отображаем: полная последовательность с выделением
+        // Палочки выравнивания
+        var alignHtml = '';
+        for (var c = 0; c < aln.alignment.length; c++) {
+            var mark = aln.alignment[c];
+            if (mark === '|') {
+                alignHtml += '<span style="color:#276749;font-weight:bold;">|</span>';
+            } else if (mark === '.') {
+                alignHtml += '<span style="color:#d69e2e;font-weight:bold;">.</span>';
+            } else {
+                alignHtml += ' ';
+            }
+        }
+        
         html += '<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.8rem;overflow-x:auto;">';
         
         // Query строка
-        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.6;white-space:nowrap;">';
-        html += '<span style="color:#2c5282;font-weight:600;">Query </span>';
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.8rem;line-height:1.4;white-space:nowrap;">';
+        html += '<span style="color:#2c5282;">Query </span>';
         html += '<span style="color:#a0aec0;">' + '·'.repeat(aln.targetStart) + '</span>';
         html += queryHtml;
         html += '<span style="color:#a0aec0;">' + '·'.repeat(fullSeq.length - aln.targetEnd) + '</span>';
         html += '</div>';
         
+        // Alignment строка (палочки)
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.8rem;line-height:1.4;white-space:nowrap;">';
+        html += '<span style="color:#718096;">      </span>';
+        html += '<span style="color:#a0aec0;">' + '·'.repeat(aln.targetStart) + '</span>';
+        html += alignHtml;
+        html += '<span style="color:#a0aec0;">' + '·'.repeat(fullSeq.length - aln.targetEnd) + '</span>';
+        html += '</div>';
+        
         // Target строка
-        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.6;white-space:nowrap;margin-top:2px;">';
-        html += '<span style="color:#c05621;font-weight:600;">Target</span> ';
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.8rem;line-height:1.4;white-space:nowrap;">';
+        html += '<span style="color:#c05621;">Sbjct </span>';
         html += '<span style="color:#a0aec0;">' + beforeTarget + '</span>';
-        html += alignedHtml;
+        html += targetHtml;
         html += '<span style="color:#a0aec0;">' + afterTarget + '</span>';
         html += '</div>';
         
-        // Метка позиций
-        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.65rem;color:#718096;margin-top:4px;white-space:nowrap;">';
-        html += '<span style="visibility:hidden;">Target </span>';
-        html += '<span>Pos: 1</span>';
-        
-        // Отметки позиций каждые 10 аминокислот
-        var ruler = '';
-        for (var p = 1; p <= fullSeq.length; p++) {
-            if (p % 10 === 0) {
-                ruler += '<span style="color:#a0aec0;">' + (p % 100 === 0 ? '|' : '.') + '</span>';
-            } else if (p === 1) {
-                ruler += '';
-            } else {
-                ruler += ' ';
-            }
-        }
-        html += '<span style="margin-left:4px;">' + ruler + '</span>';
         html += '</div>';
-        
-        html += '</div>';
-        
-        // Легенда
-        html += '<div style="display:flex;gap:1rem;margin-top:0.5rem;font-size:0.7rem;color:#718096;">';
-        html += '<span><span class="match-aa" style="padding:0 4px;">A</span> exact match</span>';
-        html += '<span><span class="similar-aa" style="padding:0 4px;">A</span> similar</span>';
-        html += '<span><span class="mismatch-aa" style="padding:0 4px;">A</span> mismatch</span>';
-        html += '<span><span style="color:#a0aec0;">A</span> not aligned</span>';
-        html += '</div>';
-        
         html += '</div>';
     }
     
