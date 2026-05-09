@@ -260,7 +260,6 @@ function displayResults(results, query) {
         var pid = aln.peptideId;
         var peptideUrl = 'peptide.html?id=' + pid + '&name=' + encodeURIComponent(name);
         
-        // Score badges
         var identityClass = aln.identityPercent >= 80 ? 'score-high' : (aln.identityPercent >= 50 ? 'score-medium' : 'score-low');
         var coverageClass = aln.queryCoverage >= 80 ? 'score-high' : (aln.queryCoverage >= 50 ? 'score-medium' : 'score-low');
         
@@ -277,48 +276,102 @@ function displayResults(results, query) {
         // Stats
         html += '<div class="stats-row">';
         html += '<span><strong>Score:</strong> ' + aln.score + '</span>';
-        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + ' (' + aln.identityPercent.toFixed(1) + '%)</span>';
-        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + ' (' + aln.positivePercent.toFixed(1) + '%)</span>';
+        html += '<span><strong>Identities:</strong> ' + aln.identities + '/' + aln.length + '</span>';
+        html += '<span><strong>Positives:</strong> ' + aln.positives + '/' + aln.length + '</span>';
         html += '<span><strong>Gaps:</strong> ' + aln.gaps + '</span>';
-        html += '<span><strong>Target length:</strong> ' + aln.peptideLength + ' aa</span>';
+        html += '<span><strong>Length:</strong> ' + aln.fullTarget.length + ' aa</span>';
         html += '</div>';
         
-        // Full target sequence
-        html += '<div style="margin-bottom:0.6rem;font-size:0.75rem;color:#718096;">';
-        html += '<strong>Full target sequence:</strong><br>';
-        html += '<span style="font-family:\'Courier New\',monospace;word-break:break-all;background:#edf2f7;padding:4px 8px;border-radius:4px;display:inline-block;max-width:100%;">' + aln.fullTarget + '</span>';
-        html += '</div>';
+        // Построение полной последовательности с выделением выровненного участка
+        var fullSeq = aln.fullTarget;
+        var beforeTarget = fullSeq.substring(0, aln.targetStart);
+        var alignedTarget = fullSeq.substring(aln.targetStart, aln.targetEnd);
+        var afterTarget = fullSeq.substring(aln.targetEnd);
         
-        // Alignment display
-        html += '<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:0.5rem;overflow-x:auto;">';
-        
-        for (var k = 0; k < aln.length; k += 60) {
-            var qPart = aln.queryAligned.substring(k, k + 60);
-            var aPart = aln.alignment.substring(k, k + 60);
-            var tPart = aln.targetAligned.substring(k, k + 60);
+        // Собираем выровненный участок с цветовыми метками
+        var alignedHtml = '';
+        for (var c = 0; c < aln.targetAligned.length; c++) {
+            var tAA = aln.targetAligned[c];
+            var qAA = aln.queryAligned[c];
+            var mark = aln.alignment[c];
             
-            if (!qPart) break;
-            
-            // Color the alignment line
-            var coloredAlignment = '';
-            for (var c = 0; c < aPart.length; c++) {
-                if (aPart[c] === '|') coloredAlignment += '<span style="color:#276749;font-weight:bold;">|</span>';
-                else if (aPart[c] === '.') coloredAlignment += '<span style="color:#d69e2e;font-weight:bold;">.</span>';
-                else coloredAlignment += '<span style="color:#cbd5e0;">·</span>';
-            }
-            
-            html += '<pre style="margin:0;font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.5;white-space:pre;">';
-            html += '<span style="color:#2c5282;">Query </span> ' + qPart + '\n';
-            html += '<span style="color:#718096;">      </span> ' + coloredAlignment + '\n';
-            html += '<span style="color:#c05621;">Sbjct </span> ' + tPart;
-            html += '</pre>';
-            
-            if (k + 60 < aln.length) {
-                html += '<div style="height:4px;"></div>';
+            if (tAA === '-' || qAA === '-') {
+                // Gap — показываем тире в соответствующей строке
+                alignedHtml += '<span class="gap-aa">' + (tAA === '-' ? '·' : tAA) + '</span>';
+            } else if (mark === '|') {
+                alignedHtml += '<span class="match-aa">' + tAA + '</span>';
+            } else if (mark === '.') {
+                alignedHtml += '<span class="similar-aa">' + tAA + '</span>';
+            } else {
+                alignedHtml += '<span class="mismatch-aa">' + tAA + '</span>';
             }
         }
         
+        // Собираем query с такими же цветами
+        var queryHtml = '';
+        for (var c = 0; c < aln.queryAligned.length; c++) {
+            var qAA = aln.queryAligned[c];
+            var mark = aln.alignment[c];
+            
+            if (qAA === '-') {
+                queryHtml += '<span class="gap-aa">·</span>';
+            } else if (mark === '|') {
+                queryHtml += '<span class="match-aa">' + qAA + '</span>';
+            } else if (mark === '.') {
+                queryHtml += '<span class="similar-aa">' + qAA + '</span>';
+            } else {
+                queryHtml += '<span class="mismatch-aa">' + qAA + '</span>';
+            }
+        }
+        
+        // Отображаем: полная последовательность с выделением
+        html += '<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.8rem;overflow-x:auto;">';
+        
+        // Query строка
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.6;white-space:nowrap;">';
+        html += '<span style="color:#2c5282;font-weight:600;">Query </span>';
+        html += '<span style="color:#a0aec0;">' + '·'.repeat(aln.targetStart) + '</span>';
+        html += queryHtml;
+        html += '<span style="color:#a0aec0;">' + '·'.repeat(fullSeq.length - aln.targetEnd) + '</span>';
         html += '</div>';
+        
+        // Target строка
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;line-height:1.6;white-space:nowrap;margin-top:2px;">';
+        html += '<span style="color:#c05621;font-weight:600;">Target</span> ';
+        html += '<span style="color:#a0aec0;">' + beforeTarget + '</span>';
+        html += alignedHtml;
+        html += '<span style="color:#a0aec0;">' + afterTarget + '</span>';
+        html += '</div>';
+        
+        // Метка позиций
+        html += '<div style="font-family:\'Courier New\',monospace;font-size:0.65rem;color:#718096;margin-top:4px;white-space:nowrap;">';
+        html += '<span style="visibility:hidden;">Target </span>';
+        html += '<span>Pos: 1</span>';
+        
+        // Отметки позиций каждые 10 аминокислот
+        var ruler = '';
+        for (var p = 1; p <= fullSeq.length; p++) {
+            if (p % 10 === 0) {
+                ruler += '<span style="color:#a0aec0;">' + (p % 100 === 0 ? '|' : '.') + '</span>';
+            } else if (p === 1) {
+                ruler += '';
+            } else {
+                ruler += ' ';
+            }
+        }
+        html += '<span style="margin-left:4px;">' + ruler + '</span>';
+        html += '</div>';
+        
+        html += '</div>';
+        
+        // Легенда
+        html += '<div style="display:flex;gap:1rem;margin-top:0.5rem;font-size:0.7rem;color:#718096;">';
+        html += '<span><span class="match-aa" style="padding:0 4px;">A</span> exact match</span>';
+        html += '<span><span class="similar-aa" style="padding:0 4px;">A</span> similar</span>';
+        html += '<span><span class="mismatch-aa" style="padding:0 4px;">A</span> mismatch</span>';
+        html += '<span><span style="color:#a0aec0;">A</span> not aligned</span>';
+        html += '</div>';
+        
         html += '</div>';
     }
     
