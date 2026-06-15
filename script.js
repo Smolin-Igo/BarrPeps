@@ -822,17 +822,26 @@ function calculateLengthDistribution() {
     if (lengths.length === 0) return {};
     var maxL = Math.max.apply(null, lengths);
     var bins = {};
-    for (var i = 1; i <= Math.ceil(maxL / 5) * 5; i += 5) bins[i + '-' + (i + 4)] = 0;
+    // Создаем бины по 5 аминокислот
+    for (var i = 1; i <= Math.ceil(maxL / 5) * 5; i += 5) {
+        var binStart = i;
+        var binEnd = i + 4;
+        bins[binStart + '-' + binEnd] = 0;
+    }
     lengths.forEach(function(l) {
-        var bi = Math.floor((l - 1) / 5), bs = bi * 5 + 1;
-        var label = bs + '-' + (bs + 4);
+        var binIndex = Math.floor((l - 1) / 5);
+        var binStart = binIndex * 5 + 1;
+        var binEnd = binStart + 4;
+        var label = binStart + '-' + binEnd;
         if (bins[label] !== undefined) bins[label]++;
     });
-    var f = {};
-    for (var k in bins) if (bins[k] > 0) f[k] = bins[k];
-    return f;
+    // Удаляем пустые бины (опционально)
+    var result = {};
+    for (var key in bins) {
+        if (bins[key] > 0) result[key] = bins[key];
+    }
+    return result;
 }
-
 function calculateAADistribution() {
     var cnt = { 'A':0,'R':0,'N':0,'D':0,'C':0,'Q':0,'E':0,'G':0,'H':0,'I':0,'L':0,'K':0,'M':0,'F':0,'P':0,'S':0,'T':0,'W':0,'Y':0,'V':0 };
     var total = 0;
@@ -870,17 +879,200 @@ function createAAChart() {
     });
 }
 
-// ========== HOME PAGE ==========
+// ========== INTERACTIVE LENGTH CHART ==========
+// Функция для создания кликабельного графика распределения длин
+function createClickableLengthChart() {
+    var ctx = document.getElementById('lengthChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    
+    var distribution = calculateLengthDistribution();
+    var labels = Object.keys(distribution);
+    var data = Object.values(distribution);
+    
+    if (lengthChart) lengthChart.destroy();
+    
+    lengthChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Number of Peptides',
+                data: data,
+                backgroundColor: 'rgba(66, 153, 225, 0.7)',
+                borderColor: 'rgba(66, 153, 225, 1)',
+                borderWidth: 1,
+                hoverBackgroundColor: 'rgba(66, 153, 225, 0.9)',
+                cursor: 'pointer'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Peptides: ' + context.raw;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, precision: 0 },
+                    title: {
+                        display: true,
+                        text: 'Number of Peptides',
+                        font: { size: 11 }
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Length Range (amino acids)',
+                        font: { size: 11 }
+                    },
+                    ticks: {
+                        callback: function(val, index) {
+                            return labels[index];
+                        }
+                    }
+                }
+            },
+            onClick: function(event, activeElements) {
+                if (activeElements.length === 0) return;
+                var index = activeElements[0].dataIndex;
+                var rangeLabel = labels[index];
+                var rangeParts = rangeLabel.split('-');
+                var minLen = parseInt(rangeParts[0]);
+                var maxLen = parseInt(rangeParts[1]);
+                
+                // Сохраняем фильтры в sessionStorage перед переходом
+                var filters = {
+                    search: '',
+                    lengthMin: minLen,
+                    lengthMax: maxLen,
+                    disulfide: 'all',
+                    pdb: 'all',
+                    selectedSources: [],
+                    selectedMods: [],
+                    sortColumn: 'peptide_name',
+                    sortDirection: 'asc',
+                    currentView: 'table'
+                };
+                sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
+                
+                // Перенаправляем на страницу browse.html
+                window.location.href = 'browse.html';
+            }
+        }
+    });
+    
+    // Добавляем стиль курсора для canvas
+    ctx.style.cursor = 'pointer';
+}
+
+// ========== INTERACTIVE AA CHART ==========
+function createClickableAAChart() {
+    var ctx = document.getElementById('aaChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    
+    var distribution = calculateAADistribution();
+    var labels = Object.keys(distribution);
+    var data = Object.values(distribution);
+    
+    if (aaChart) aaChart.destroy();
+    
+    aaChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Frequency (%)',
+                data: data,
+                backgroundColor: 'rgba(66, 153, 225, 0.7)',
+                borderColor: 'rgba(66, 153, 225, 1)',
+                borderWidth: 1,
+                hoverBackgroundColor: 'rgba(66, 153, 225, 0.9)',
+                cursor: 'pointer'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Frequency: ' + context.raw + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Frequency (%)',
+                        font: { size: 11 }
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Amino Acid',
+                        font: { size: 11 }
+                    }
+                }
+            },
+            onClick: function(event, activeElements) {
+                if (activeElements.length === 0) return;
+                var index = activeElements[0].dataIndex;
+                var aa = labels[index];
+                
+                // Для поиска по аминокислоте, сохраняем в search поле
+                var filters = {
+                    search: aa,
+                    lengthMin: 0,
+                    lengthMax: 100,
+                    disulfide: 'all',
+                    pdb: 'all',
+                    selectedSources: [],
+                    selectedMods: [],
+                    sortColumn: 'peptide_name',
+                    sortDirection: 'asc',
+                    currentView: 'table'
+                };
+                sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
+                
+                window.location.href = 'browse.html';
+            }
+        }
+    });
+    
+    ctx.style.cursor = 'pointer';
+}
+
+// Обновите initHomePage для использования кликабельных версий обоих графиков
 function initHomePage() {
     updateHomeStats();
     displayFeaturedPeptides();
     setTimeout(function() {
         if (peptidesData.length > 0 && typeof Chart !== 'undefined') {
-            createLengthChart();
-            createAAChart();
+            createClickableLengthChart();
+            createClickableAAChart();  // Тоже кликабельный
         }
     }, 100);
 }
+
+// ========== HOME PAGE ==========
 
 function updateHomeStats() {
     var t = peptidesData.length;
