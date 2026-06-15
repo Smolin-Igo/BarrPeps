@@ -1328,6 +1328,11 @@ footer {
     }
 }
 
+/* ============================================ */
+/* IMPROVED TABLE STYLES FOR PEPTIDE DETAIL PAGE */
+/* ============================================ */
+
+/* Table wrapper for horizontal scrolling */
 .table-wrapper {
     overflow-x: auto;
     margin: 1rem 0;
@@ -1356,7 +1361,7 @@ footer {
 .data-table th,
 .detail-section .data-table th {
     padding: 12px 10px;
-    text-align: left;
+    text-align: center;
     font-weight: 700;
     color: #1e293b;
     font-size: 0.7rem;
@@ -1367,13 +1372,13 @@ footer {
     white-space: nowrap;
 }
 
-/* Table cell styling - CRITICAL FIX */
+/* Table cell styling - CENTERED TEXT */
 .data-table td,
 .detail-section .data-table td {
     padding: 10px 10px;
-    text-align: left;
+    text-align: center;
     border-bottom: 1px solid #e2e8f0;
-    vertical-align: top;
+    vertical-align: middle;
     color: #334155;
     font-size: 0.75rem;
     background: white;
@@ -1407,11 +1412,12 @@ footer {
     background-color: #fafcff;
 }
 
-/* First column in tables */
+/* First column in tables - keep centered but slightly different styling */
 .data-table td:first-child,
 .detail-section .data-table td:first-child {
     font-weight: 500;
     color: #2c5282;
+    text-align: center;
 }
 
 /* Ensure borders are visible on all screen sizes */
@@ -1468,11 +1474,14 @@ footer {
     padding: 10px 8px;
     border-bottom: 2px solid #cbd5e0;
     font-weight: 600;
+    text-align: center;
 }
 
 .detail-section table td {
     padding: 8px;
     border-bottom: 1px solid #e2e8f0;
+    text-align: center;
+    vertical-align: middle;
 }
 
 .detail-section table tr:last-child td {
