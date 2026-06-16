@@ -855,43 +855,57 @@ function calculateAADistribution() {
     return r;
 }
 
-function createLengthChart() {
-    var ctx = document.getElementById('lengthChart');
-    if (!ctx || typeof Chart === 'undefined') return;
-    var d = calculateLengthDistribution();
-    if (lengthChart) lengthChart.destroy();
-    lengthChart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: Object.keys(d), datasets: [{ label: 'Peptides', data: Object.values(d), backgroundColor: 'rgba(66,153,225,0.7)' }] },
-        options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-    });
-}
 
-function createAAChart() {
-    var ctx = document.getElementById('aaChart');
-    if (!ctx || typeof Chart === 'undefined') return;
-    var d = calculateAADistribution();
-    if (aaChart) aaChart.destroy();
-    aaChart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: Object.keys(d), datasets: [{ label: '%', data: Object.values(d), backgroundColor: '#4299e1' }] },
-        options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-    });
-}
-
-// ========== INTERACTIVE LENGTH CHART ==========
-// Функция для создания кликабельного графика распределения длин
+// ============================================
+// ИНТЕРАКТИВНЫЙ ГРАФИК РАСПРЕДЕЛЕНИЯ ДЛИН
+// При клике на столбец - переход в поиск с фильтром по длине
+// ============================================
 function createClickableLengthChart() {
     var ctx = document.getElementById('lengthChart');
-    if (!ctx || typeof Chart === 'undefined') return;
+    if (!ctx) {
+        console.warn('Canvas #lengthChart not found');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded');
+        return;
+    }
     
-    var distribution = calculateLengthDistribution();
-    var labels = Object.keys(distribution);
-    var data = Object.values(distribution);
+    // Получаем данные
+    var lengths = peptidesData.map(function(p) { return parseInt(p.length) || 0; }).filter(function(l) { return l > 0; });
+    if (lengths.length === 0) {
+        console.warn('No length data available');
+        return;
+    }
     
-    if (lengthChart) lengthChart.destroy();
+    // Создаем бины по 5 аминокислот
+    var maxL = Math.max.apply(null, lengths);
+    var bins = {};
+    for (var i = 1; i <= Math.ceil(maxL / 5) * 5; i += 5) {
+        var binStart = i;
+        var binEnd = i + 4;
+        bins[binStart + '-' + binEnd] = 0;
+    }
     
-    lengthChart = new Chart(ctx, {
+    // Заполняем бины
+    lengths.forEach(function(l) {
+        var binIndex = Math.floor((l - 1) / 5);
+        var binStart = binIndex * 5 + 1;
+        var binEnd = binStart + 4;
+        var label = binStart + '-' + binEnd;
+        if (bins[label] !== undefined) bins[label]++;
+    });
+    
+    var labels = Object.keys(bins);
+    var data = Object.values(bins);
+    
+    // Уничтожаем старый график, если он существует
+    if (window.lengthChart && typeof window.lengthChart.destroy === 'function') {
+        window.lengthChart.destroy();
+    }
+    
+    // Создаем новый график
+    window.lengthChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -902,7 +916,8 @@ function createClickableLengthChart() {
                 borderColor: 'rgba(66, 153, 225, 1)',
                 borderWidth: 1,
                 hoverBackgroundColor: 'rgba(66, 153, 225, 0.9)',
-                cursor: 'pointer'
+                hoverBorderColor: 'rgba(66, 153, 225, 1)',
+                hoverBorderWidth: 2
             }]
         },
         options: {
@@ -910,13 +925,15 @@ function createClickableLengthChart() {
             maintainAspectRatio: true,
             plugins: {
                 legend: {
-                    position: 'top',
-                    labels: { font: { size: 11 } }
+                    display: false
                 },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
                             return 'Peptides: ' + context.raw;
+                        },
+                        title: function(context) {
+                            return 'Length: ' + context[0].label + ' aa';
                         }
                     }
                 }
@@ -924,35 +941,48 @@ function createClickableLengthChart() {
             scales: {
                 y: {
                     beginAtZero: true,
-                    ticks: { stepSize: 1, precision: 0 },
+                    ticks: { 
+                        stepSize: 1, 
+                        precision: 0,
+                        font: { size: 10 }
+                    },
                     title: {
                         display: true,
                         text: 'Number of Peptides',
-                        font: { size: 11 }
+                        font: { size: 11, weight: 'bold' }
                     }
                 },
                 x: {
                     title: {
                         display: true,
                         text: 'Length Range (amino acids)',
-                        font: { size: 11 }
+                        font: { size: 11, weight: 'bold' }
                     },
                     ticks: {
-                        callback: function(val, index) {
-                            return labels[index];
-                        }
+                        font: { size: 9 },
+                        maxRotation: 45,
+                        minRotation: 0
                     }
                 }
             },
+            // ОБРАБОТЧИК КЛИКА ПО СТОЛБЦУ
             onClick: function(event, activeElements) {
                 if (activeElements.length === 0) return;
+                
                 var index = activeElements[0].dataIndex;
                 var rangeLabel = labels[index];
+                if (!rangeLabel) return;
+                
                 var rangeParts = rangeLabel.split('-');
                 var minLen = parseInt(rangeParts[0]);
                 var maxLen = parseInt(rangeParts[1]);
                 
-                // Сохраняем фильтры в sessionStorage перед переходом
+                if (isNaN(minLen) || isNaN(maxLen)) return;
+                
+                console.log('🔍 Clicked on length range:', minLen, '-', maxLen, 'aa');
+                console.log('📊 Found', data[index], 'peptides in this range');
+                
+                // Сохраняем фильтры в sessionStorage
                 var filters = {
                     search: '',
                     lengthMin: minLen,
@@ -967,14 +997,17 @@ function createClickableLengthChart() {
                 };
                 sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
                 
-                // Перенаправляем на страницу browse.html
+                // Перенаправляем на страницу поиска
                 window.location.href = 'browse.html';
             }
         }
     });
     
-    // Добавляем стиль курсора для canvas
+    // Добавляем указатель курсора при наведении на столбцы
     ctx.style.cursor = 'pointer';
+    
+    console.log('✅ Interactive length chart created successfully');
+    console.log('📊 Ranges:', labels.length, 'bins, total peptides:', lengths.length);
 }
 
 // ========== INTERACTIVE AA CHART ==========
@@ -1067,7 +1100,7 @@ function initHomePage() {
     setTimeout(function() {
         if (peptidesData.length > 0 && typeof Chart !== 'undefined') {
             createClickableLengthChart();
-            createClickableAAChart();  // Тоже кликабельный
+            createClickableAAChart(); 
         }
     }, 100);
 }
