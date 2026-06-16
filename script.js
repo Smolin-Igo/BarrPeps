@@ -859,45 +859,81 @@ function calculateAADistribution() {
 // ГРАФИК РАСПРЕДЕЛЕНИЯ ДЛИН (кликабельный)
 // ============================================
 function createClickableLengthChart() {
-    var ctx = document.getElementById('lengthChart');
-    if (!ctx || typeof Chart === 'undefined') return;
-    
-    var lengths = peptidesData.map(function(p) { return parseInt(p.length) || 0; }).filter(function(l) { return l > 0; });
-    if (lengths.length === 0) return;
-    
-    var maxL = Math.max.apply(null, lengths);
-    var bins = {};
-    for (var i = 1; i <= Math.ceil(maxL / 5) * 5; i += 5) {
-        bins[i + '-' + (i + 4)] = 0;
+    var canvas = document.getElementById('lengthChart');
+    if (!canvas) {
+        console.warn('lengthChart canvas not found');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded');
+        return;
     }
     
-    lengths.forEach(function(l) {
-        var binIndex = Math.floor((l - 1) / 5);
-        var label = (binIndex * 5 + 1) + '-' + (binIndex * 5 + 5);
-        if (bins[label] !== undefined) bins[label]++;
-    });
+    // Собираем данные
+    var allLengths = [];
+    for (var i = 0; i < peptidesData.length; i++) {
+        var len = parseInt(peptidesData[i].length) || 0;
+        if (len > 0) allLengths.push(len);
+    }
+    
+    if (allLengths.length === 0) {
+        console.warn('No length data');
+        return;
+    }
+    
+    // Создаем бины по 5
+    var maxLen = Math.max.apply(null, allLengths);
+    var binSize = 5;
+    var bins = {};
+    
+    for (var start = 1; start <= maxLen; start += binSize) {
+        var end = start + binSize - 1;
+        bins[start + '-' + end] = 0;
+    }
+    
+    for (var i = 0; i < allLengths.length; i++) {
+        var l = allLengths[i];
+        var binIndex = Math.floor((l - 1) / binSize);
+        var start = binIndex * binSize + 1;
+        var end = start + binSize - 1;
+        var key = start + '-' + end;
+        if (bins[key] !== undefined) bins[key]++;
+    }
     
     // Удаляем пустые бины
-    var filteredBins = {};
+    var cleanBins = {};
     for (var key in bins) {
-        if (bins[key] > 0) filteredBins[key] = bins[key];
+        if (bins[key] > 0) {
+            cleanBins[key] = bins[key];
+        }
     }
     
-    var labels = Object.keys(filteredBins);
-    var data = Object.values(filteredBins);
-    if (labels.length === 0) return;
+    var labels = Object.keys(cleanBins);
+    var values = Object.values(cleanBins);
     
-    if (window.lengthChart && typeof window.lengthChart.destroy === 'function') {
-        window.lengthChart.destroy();
+    if (labels.length === 0) {
+        console.warn('No data to display');
+        return;
     }
     
-    window.lengthChart = new Chart(ctx, {
+    // Сохраняем данные для кликов
+    window._lengthChartData = {
+        labels: labels,
+        values: values
+    };
+    
+    // Уничтожаем старый график
+    if (window.lengthChartInstance && typeof window.lengthChartInstance.destroy === 'function') {
+        window.lengthChartInstance.destroy();
+    }
+    
+    window.lengthChartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Number of Peptides',
-                data: data,
+                label: 'Peptides',
+                data: values,
                 backgroundColor: 'rgba(66, 153, 225, 0.7)',
                 borderColor: 'rgba(66, 153, 225, 1)',
                 borderWidth: 1,
@@ -908,14 +944,7 @@ function createClickableLengthChart() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return 'Peptides: ' + context.raw;
-                        }
-                    }
-                }
+                legend: { display: false }
             },
             scales: {
                 y: {
@@ -930,30 +959,34 @@ function createClickableLengthChart() {
                 x: {
                     title: {
                         display: true,
-                        text: 'Length Range (amino acids)',
+                        text: 'Length Range (aa)',
                         font: { size: 11, weight: 'bold' }
                     },
                     ticks: {
                         font: { size: 9 },
-                        maxRotation: 45,
-                        minRotation: 0
+                        maxRotation: 45
                     }
                 }
             },
-            onClick: function(event, activeElements) {
-                if (activeElements.length === 0) return;
-                var index = activeElements[0].dataIndex;
-                var rangeLabel = labels[index];
-                var parts = rangeLabel.split('-');
-                var minLen = parseInt(parts[0]);
-                var maxLen = parseInt(parts[1]);
+            onClick: function(e, elements) {
+                if (!elements || elements.length === 0) return;
                 
-                console.log('Click on length:', minLen, '-', maxLen); // Отладка
+                var idx = elements[0].dataIndex;
+                var label = window._lengthChartData.labels[idx];
+                if (!label) return;
+                
+                var parts = label.split('-');
+                var minVal = parseInt(parts[0]);
+                var maxVal = parseInt(parts[1]);
+                
+                if (isNaN(minVal) || isNaN(maxVal)) return;
+                
+                console.log('📊 Length filter:', minVal + '-' + maxVal);
                 
                 var filters = {
                     search: '',
-                    lengthMin: minLen,
-                    lengthMax: maxLen,
+                    lengthMin: minVal,
+                    lengthMax: maxVal,
                     disulfide: 'all',
                     pdb: 'all',
                     selectedSources: [],
@@ -962,12 +995,15 @@ function createClickableLengthChart() {
                     sortDirection: 'asc',
                     currentView: 'table'
                 };
+                
                 sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
                 window.location.href = 'browse.html';
             }
         }
     });
-    ctx.style.cursor = 'pointer';
+    
+    canvas.style.cursor = 'pointer';
+    console.log('✅ Length chart created with', labels.length, 'bins');
 }
 
 
@@ -975,25 +1011,42 @@ function createClickableLengthChart() {
 // ГРАФИК РАСПРЕДЕЛЕНИЯ АМИНОКИСЛОТ (кликабельный)
 // ============================================
 function createClickableAAChart() {
-    var ctx = document.getElementById('aaChart');
-    if (!ctx || typeof Chart === 'undefined') return;
-    
-    var distribution = calculateAADistribution();
-    var labels = Object.keys(distribution);
-    var data = Object.values(distribution);
-    if (labels.length === 0) return;
-    
-    if (window.aaChart && typeof window.aaChart.destroy === 'function') {
-        window.aaChart.destroy();
+    var canvas = document.getElementById('aaChart');
+    if (!canvas) {
+        console.warn('aaChart canvas not found');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded');
+        return;
     }
     
-    window.aaChart = new Chart(ctx, {
+    var dist = calculateAADistribution();
+    var labels = Object.keys(dist);
+    var values = Object.values(dist);
+    
+    if (labels.length === 0) {
+        console.warn('No AA data');
+        return;
+    }
+    
+    // Сохраняем данные для кликов
+    window._aaChartData = {
+        labels: labels,
+        values: values
+    };
+    
+    if (window.aaChartInstance && typeof window.aaChartInstance.destroy === 'function') {
+        window.aaChartInstance.destroy();
+    }
+    
+    window.aaChartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
                 label: 'Frequency (%)',
-                data: data,
+                data: values,
                 backgroundColor: 'rgba(66, 153, 225, 0.7)',
                 borderColor: 'rgba(66, 153, 225, 1)',
                 borderWidth: 1,
@@ -1004,14 +1057,7 @@ function createClickableAAChart() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return 'Frequency: ' + context.raw + '%';
-                        }
-                    }
-                }
+                legend: { display: false }
             },
             scales: {
                 y: {
@@ -1022,9 +1068,7 @@ function createClickableAAChart() {
                         font: { size: 11, weight: 'bold' }
                     },
                     ticks: {
-                        callback: function(value) {
-                            return value + '%';
-                        }
+                        callback: function(v) { return v + '%'; }
                     }
                 },
                 x: {
@@ -1038,12 +1082,14 @@ function createClickableAAChart() {
                     }
                 }
             },
-            onClick: function(event, activeElements) {
-                if (activeElements.length === 0) return;
-                var index = activeElements[0].dataIndex;
-                var aa = labels[index];
+            onClick: function(e, elements) {
+                if (!elements || elements.length === 0) return;
                 
-                console.log('Click on AA:', aa); // Отладка
+                var idx = elements[0].dataIndex;
+                var aa = window._aaChartData.labels[idx];
+                if (!aa) return;
+                
+                console.log('🔬 AA filter:', aa);
                 
                 var filters = {
                     search: aa,
@@ -1057,27 +1103,49 @@ function createClickableAAChart() {
                     sortDirection: 'asc',
                     currentView: 'table'
                 };
+                
                 sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
                 window.location.href = 'browse.html';
             }
         }
     });
-    ctx.style.cursor = 'pointer';
+    
+    canvas.style.cursor = 'pointer';
+    console.log('✅ AA chart created with', labels.length, 'amino acids');
 }
 
 
 // ============================================
-// ОБНОВЛЕННАЯ ФУНКЦИЯ INIT HOMEPAGE
+// ИНИЦИАЛИЗАЦИЯ ГЛАВНОЙ СТРАНИЦЫ
 // ============================================
 function initHomePage() {
+    console.log('🏠 Initializing home page...');
     updateHomeStats();
     displayFeaturedPeptides();
-    setTimeout(function() {
+    
+    // Ждем загрузки данных и Chart.js
+    var checkReady = function(attempts) {
+        attempts = attempts || 0;
+        if (attempts > 20) {
+            console.warn('⏰ Timeout waiting for data');
+            return;
+        }
+        
         if (peptidesData && peptidesData.length > 0 && typeof Chart !== 'undefined') {
+            console.log('✅ Data loaded, creating charts...');
             createClickableLengthChart();
             createClickableAAChart();
+        } else {
+            console.log('⏳ Waiting for data... (attempt ' + (attempts + 1) + ')');
+            setTimeout(function() {
+                checkReady(attempts + 1);
+            }, 200);
         }
-    }, 200);
+    };
+    
+    setTimeout(function() {
+        checkReady(0);
+    }, 300);
 }
 
 // ========== HOME PAGE ==========
