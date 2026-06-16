@@ -862,47 +862,35 @@ function createClickableLengthChart() {
     var ctx = document.getElementById('lengthChart');
     if (!ctx || typeof Chart === 'undefined') return;
     
-    // Получаем данные
     var lengths = peptidesData.map(function(p) { return parseInt(p.length) || 0; }).filter(function(l) { return l > 0; });
     if (lengths.length === 0) return;
     
-    // Создаем бины по 5 аминокислот
     var maxL = Math.max.apply(null, lengths);
     var bins = {};
     for (var i = 1; i <= Math.ceil(maxL / 5) * 5; i += 5) {
-        var binStart = i;
-        var binEnd = i + 4;
-        bins[binStart + '-' + binEnd] = 0;
+        bins[i + '-' + (i + 4)] = 0;
     }
     
-    // Заполняем бины
     lengths.forEach(function(l) {
         var binIndex = Math.floor((l - 1) / 5);
-        var binStart = binIndex * 5 + 1;
-        var binEnd = binStart + 4;
-        var label = binStart + '-' + binEnd;
+        var label = (binIndex * 5 + 1) + '-' + (binIndex * 5 + 5);
         if (bins[label] !== undefined) bins[label]++;
     });
     
-    // Удаляем пустые бины (где 0 пептидов)
+    // Удаляем пустые бины
     var filteredBins = {};
     for (var key in bins) {
-        if (bins[key] > 0) {
-            filteredBins[key] = bins[key];
-        }
+        if (bins[key] > 0) filteredBins[key] = bins[key];
     }
     
     var labels = Object.keys(filteredBins);
     var data = Object.values(filteredBins);
-    
     if (labels.length === 0) return;
     
-    // Уничтожаем старый график
     if (window.lengthChart && typeof window.lengthChart.destroy === 'function') {
         window.lengthChart.destroy();
     }
     
-    // Создаем новый график
     window.lengthChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -954,12 +942,13 @@ function createClickableLengthChart() {
             },
             onClick: function(event, activeElements) {
                 if (activeElements.length === 0) return;
-                
                 var index = activeElements[0].dataIndex;
                 var rangeLabel = labels[index];
                 var parts = rangeLabel.split('-');
                 var minLen = parseInt(parts[0]);
                 var maxLen = parseInt(parts[1]);
+                
+                console.log('Click on length:', minLen, '-', maxLen); // Отладка
                 
                 var filters = {
                     search: '',
@@ -978,7 +967,6 @@ function createClickableLengthChart() {
             }
         }
     });
-    
     ctx.style.cursor = 'pointer';
 }
 
@@ -990,19 +978,15 @@ function createClickableAAChart() {
     var ctx = document.getElementById('aaChart');
     if (!ctx || typeof Chart === 'undefined') return;
     
-    // Получаем данные
     var distribution = calculateAADistribution();
     var labels = Object.keys(distribution);
     var data = Object.values(distribution);
-    
     if (labels.length === 0) return;
     
-    // Уничтожаем старый график
     if (window.aaChart && typeof window.aaChart.destroy === 'function') {
         window.aaChart.destroy();
     }
     
-    // Создаем новый график
     window.aaChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -1056,9 +1040,10 @@ function createClickableAAChart() {
             },
             onClick: function(event, activeElements) {
                 if (activeElements.length === 0) return;
-                
                 var index = activeElements[0].dataIndex;
                 var aa = labels[index];
+                
+                console.log('Click on AA:', aa); // Отладка
                 
                 var filters = {
                     search: aa,
@@ -1077,7 +1062,6 @@ function createClickableAAChart() {
             }
         }
     });
-    
     ctx.style.cursor = 'pointer';
 }
 
@@ -1121,23 +1105,77 @@ function displayFeaturedPeptides() {
 
 // ========== BROWSE PAGE ==========
 function initBrowsePage() {
-    var restored = restoreFilters();
-    if (!restored) {
+    // Пытаемся восстановить фильтры из sessionStorage
+    var saved = sessionStorage.getItem('barrpeps_filters');
+    var filters = null;
+    
+    if (saved) {
+        try {
+            filters = JSON.parse(saved);
+            console.log('Restored filters:', filters); // Отладка
+        } catch(e) {
+            console.warn('Failed to parse filters:', e);
+        }
+    }
+    
+    if (filters) {
+        // Применяем сохраненные фильтры
+        if (document.getElementById('searchInput')) {
+            document.getElementById('searchInput').value = filters.search || '';
+        }
+        if (document.getElementById('lengthMin')) {
+            document.getElementById('lengthMin').value = filters.lengthMin || 0;
+        }
+        if (document.getElementById('lengthMax')) {
+            document.getElementById('lengthMax').value = filters.lengthMax || 100;
+        }
+        if (document.getElementById('disulfideFilter')) {
+            document.getElementById('disulfideFilter').value = filters.disulfide || 'all';
+        }
+        if (document.getElementById('pdbFilter')) {
+            document.getElementById('pdbFilter').value = filters.pdb || 'all';
+        }
+        
+        selectedSources = filters.selectedSources || [];
+        selectedMods = filters.selectedMods || [];
+        sortColumn = filters.sortColumn || 'peptide_name';
+        sortDirection = filters.sortDirection || 'asc';
+        currentView = filters.currentView || 'table';
+        
+        // Применяем фильтры
         filteredPeptides = [...peptidesData];
-        updateBrowseStats();
-        displayBrowseResults();
-    } else {
         applyFilters();
+        
+        // Очищаем sessionStorage после применения (чтобы не мешало при ручном поиске)
+        // sessionStorage.removeItem('barrpeps_filters');
+        
+        // Обновляем вид
         setTimeout(function() {
             document.querySelectorAll('.toggle-btn').forEach(function(b, i) {
                 b.classList.toggle('active', (currentView === 'table' && i === 0) || (currentView === 'card' && i === 1));
             });
         }, 100);
-        return;
+        
+    } else {
+        // Если фильтров нет - показываем все
+        filteredPeptides = [...peptidesData];
+        updateBrowseStats();
+        displayBrowseResults();
     }
+    
     setupBrowseEventListeners();
     initModificationSelector();
     initSourceSelector();
+    
+    // Обновляем текст выбранных фильтров
+    if (selectedSources.length > 0) {
+        var st = document.getElementById('sourceSelectedText');
+        if (st) st.textContent = selectedSources.length + ' selected';
+    }
+    if (selectedMods.length > 0) {
+        var mt = document.getElementById('modSelectedText');
+        if (mt) mt.textContent = selectedMods.length + ' selected';
+    }
 }
 
 function setupBrowseEventListeners() {
