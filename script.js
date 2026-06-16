@@ -933,7 +933,10 @@ function createClickableLengthChart() {
                             return 'Peptides: ' + context.raw;
                         },
                         title: function(context) {
-                            return 'Length: ' + context[0].label + ' aa';
+                            if (context && context.length > 0 && context[0].label) {
+                                return 'Length: ' + context[0].label + ' aa';
+                            }
+                            return 'Length Range';
                         }
                     }
                 }
@@ -965,40 +968,67 @@ function createClickableLengthChart() {
                     }
                 }
             },
-            // ОБРАБОТЧИК КЛИКА ПО СТОЛБЦУ
+            // ОБРАБОТЧИК КЛИКА ПО СТОЛБЦУ - ИСПРАВЛЕННЫЙ
             onClick: function(event, activeElements) {
-                if (activeElements.length === 0) return;
+                // Проверяем, что клик был по элементу графика
+                if (!activeElements || activeElements.length === 0) {
+                    console.log('ℹ️ Clicked on empty area of chart');
+                    return;
+                }
                 
+                // Получаем индекс элемента
                 var index = activeElements[0].dataIndex;
-                var rangeLabel = labels[index];
-                if (!rangeLabel) return;
+                if (index === undefined || index === null) {
+                    console.warn('⚠️ Invalid index:', index);
+                    return;
+                }
                 
+                // Получаем метку диапазона
+                var rangeLabel = labels[index];
+                if (!rangeLabel) {
+                    console.warn('⚠️ No label for index:', index);
+                    return;
+                }
+                
+                // Разбираем диапазон
                 var rangeParts = rangeLabel.split('-');
+                if (!rangeParts || rangeParts.length !== 2) {
+                    console.warn('⚠️ Invalid range format:', rangeLabel);
+                    return;
+                }
+                
                 var minLen = parseInt(rangeParts[0]);
                 var maxLen = parseInt(rangeParts[1]);
                 
-                if (isNaN(minLen) || isNaN(maxLen)) return;
+                if (isNaN(minLen) || isNaN(maxLen)) {
+                    console.warn('⚠️ Invalid numbers in range:', rangeParts);
+                    return;
+                }
                 
                 console.log('🔍 Clicked on length range:', minLen, '-', maxLen, 'aa');
                 console.log('📊 Found', data[index], 'peptides in this range');
                 
                 // Сохраняем фильтры в sessionStorage
-                var filters = {
-                    search: '',
-                    lengthMin: minLen,
-                    lengthMax: maxLen,
-                    disulfide: 'all',
-                    pdb: 'all',
-                    selectedSources: [],
-                    selectedMods: [],
-                    sortColumn: 'peptide_name',
-                    sortDirection: 'asc',
-                    currentView: 'table'
-                };
-                sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
-                
-                // Перенаправляем на страницу поиска
-                window.location.href = 'browse.html';
+                try {
+                    var filters = {
+                        search: '',
+                        lengthMin: minLen,
+                        lengthMax: maxLen,
+                        disulfide: 'all',
+                        pdb: 'all',
+                        selectedSources: [],
+                        selectedMods: [],
+                        sortColumn: 'peptide_name',
+                        sortDirection: 'asc',
+                        currentView: 'table'
+                    };
+                    sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
+                    
+                    // Перенаправляем на страницу поиска
+                    window.location.href = 'browse.html';
+                } catch (e) {
+                    console.error('❌ Error saving filters:', e);
+                }
             }
         }
     });
@@ -1010,18 +1040,38 @@ function createClickableLengthChart() {
     console.log('📊 Ranges:', labels.length, 'bins, total peptides:', lengths.length);
 }
 
-// ========== INTERACTIVE AA CHART ==========
+// ============================================
+// ИНТЕРАКТИВНЫЙ ГРАФИК РАСПРЕДЕЛЕНИЯ АМИНОКИСЛОТ
+// При клике на столбец - переход в поиск с поиском по этой аминокислоте
+// ============================================
 function createClickableAAChart() {
     var ctx = document.getElementById('aaChart');
-    if (!ctx || typeof Chart === 'undefined') return;
+    if (!ctx) {
+        console.warn('Canvas #aaChart not found');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded');
+        return;
+    }
     
+    // Получаем данные
     var distribution = calculateAADistribution();
     var labels = Object.keys(distribution);
     var data = Object.values(distribution);
     
-    if (aaChart) aaChart.destroy();
+    if (labels.length === 0) {
+        console.warn('No AA distribution data available');
+        return;
+    }
     
-    aaChart = new Chart(ctx, {
+    // Уничтожаем старый график, если он существует
+    if (window.aaChart && typeof window.aaChart.destroy === 'function') {
+        window.aaChart.destroy();
+    }
+    
+    // Создаем новый график
+    window.aaChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -1032,18 +1082,27 @@ function createClickableAAChart() {
                 borderColor: 'rgba(66, 153, 225, 1)',
                 borderWidth: 1,
                 hoverBackgroundColor: 'rgba(66, 153, 225, 0.9)',
-                cursor: 'pointer'
+                hoverBorderColor: 'rgba(66, 153, 225, 1)',
+                hoverBorderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { position: 'top' },
+                legend: {
+                    display: false
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
                             return 'Frequency: ' + context.raw + '%';
+                        },
+                        title: function(context) {
+                            if (context && context.length > 0 && context[0].label) {
+                                return 'Amino Acid: ' + context[0].label;
+                            }
+                            return 'Amino Acid';
                         }
                     }
                 }
@@ -1054,46 +1113,84 @@ function createClickableAAChart() {
                     title: {
                         display: true,
                         text: 'Frequency (%)',
-                        font: { size: 11 }
+                        font: { size: 11, weight: 'bold' }
+                    },
+                    ticks: {
+                        font: { size: 10 },
+                        callback: function(value) {
+                            return value + '%';
+                        }
                     }
                 },
                 x: {
                     title: {
                         display: true,
                         text: 'Amino Acid',
-                        font: { size: 11 }
+                        font: { size: 11, weight: 'bold' }
+                    },
+                    ticks: {
+                        font: { size: 10 }
                     }
                 }
             },
+            // ОБРАБОТЧИК КЛИКА ПО СТОЛБЦУ
             onClick: function(event, activeElements) {
-                if (activeElements.length === 0) return;
+                // Проверяем, что клик был по элементу графика
+                if (!activeElements || activeElements.length === 0) {
+                    console.log('ℹ️ Clicked on empty area of chart');
+                    return;
+                }
+                
+                // Получаем индекс элемента
                 var index = activeElements[0].dataIndex;
+                if (index === undefined || index === null) {
+                    console.warn('⚠️ Invalid index:', index);
+                    return;
+                }
+                
+                // Получаем аминокислоту
                 var aa = labels[index];
+                if (!aa) {
+                    console.warn('⚠️ No label for index:', index);
+                    return;
+                }
                 
-                // Для поиска по аминокислоте, сохраняем в search поле
-                var filters = {
-                    search: aa,
-                    lengthMin: 0,
-                    lengthMax: 100,
-                    disulfide: 'all',
-                    pdb: 'all',
-                    selectedSources: [],
-                    selectedMods: [],
-                    sortColumn: 'peptide_name',
-                    sortDirection: 'asc',
-                    currentView: 'table'
-                };
-                sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
+                console.log('🔍 Clicked on Amino Acid:', aa);
+                console.log('📊 Frequency:', data[index], '%');
                 
-                window.location.href = 'browse.html';
+                // Сохраняем фильтры в sessionStorage
+                try {
+                    var filters = {
+                        search: aa,  // <-- Аминокислота попадает в поле поиска
+                        lengthMin: 0,
+                        lengthMax: 100,
+                        disulfide: 'all',
+                        pdb: 'all',
+                        selectedSources: [],
+                        selectedMods: [],
+                        sortColumn: 'peptide_name',
+                        sortDirection: 'asc',
+                        currentView: 'table'
+                    };
+                    sessionStorage.setItem('barrpeps_filters', JSON.stringify(filters));
+                    
+                    // Перенаправляем на страницу поиска
+                    window.location.href = 'browse.html';
+                } catch (e) {
+                    console.error('❌ Error saving filters:', e);
+                }
             }
         }
     });
     
+    // Добавляем указатель курсора при наведении на столбцы
     ctx.style.cursor = 'pointer';
+    
+    console.log('✅ Interactive AA chart created successfully');
+    console.log('📊 Amino acids:', labels.length);
 }
 
-// Обновите initHomePage для использования кликабельных версий обоих графиков
+// initHomePage для использования кликабельных версий обоих графиков
 function initHomePage() {
     updateHomeStats();
     displayFeaturedPeptides();
